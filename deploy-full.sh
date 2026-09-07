@@ -7,7 +7,8 @@ set -e
 SERVER_HOST="124.223.212.122"
 SERVER_USER="ubuntu"
 SSH_KEY="/Users/simon/Desktop/dev/cloud/tencent/lhkp-pdok1duo.pem"
-REMOTE_DIR="/var/www/one-for-all"
+REMOTE_DIR="/var/www/one-for-all-backend"
+FRONTEND_DIR="/var/www/one-for-all"
 PROJECT_DIR="/Users/simon/Desktop/dev/code/one-for-all"
 
 echo "=========================================="
@@ -42,9 +43,9 @@ echo "[3/5] 部署到服务器..."
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" << 'ENDSSH'
 set -e
 
-echo "  - 创建项目目录..."
-sudo mkdir -p /var/www/one-for-all
-cd /var/www/one-for-all
+echo "  - 创建后端目录..."
+sudo mkdir -p /var/www/one-for-all-backend
+cd /var/www/one-for-all-backend
 
 echo "  - 解压文件..."
 sudo tar -xzf /tmp/one-for-all-backend.tar.gz
@@ -81,7 +82,7 @@ echo ""
 # 4. 验证部署
 echo "[4/5] 验证部署..."
 ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_HOST" << 'ENDSSH'
-cd /var/www/one-for-all
+cd /var/www/one-for-all-backend
 
 echo ""
 echo "Docker 容器状态："
@@ -138,6 +139,6 @@ echo "  - API 健康检查: https://tools.chatcanvas.online/api/health"
 echo "  - 前端页面: https://tools.chatcanvas.online/"
 echo ""
 echo "管理命令："
-echo "  查看日志: ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'cd $REMOTE_DIR && sudo docker-compose logs -f api'"
-echo "  重启服务: ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'cd $REMOTE_DIR && sudo docker-compose restart api'"
+echo "  查看日志: ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'cd /var/www/one-for-all-backend && sudo docker-compose logs -f api'"
+echo "  重启服务: ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'cd /var/www/one-for-all-backend && sudo docker-compose restart api'"
 echo ""
