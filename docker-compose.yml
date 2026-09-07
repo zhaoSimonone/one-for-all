@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-one_for_all}
+      POSTGRES_USER: ${POSTGRES_USER:-one_for_all}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - one_for_all_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [one_for_all_net]
+
+  api:
+    build:
+      context: ./server
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-one_for_all}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-one_for_all}
+      PORT: 3001
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks: [one_for_all_net]
+
+volumes:
+  one_for_all_pgdata:
+    name: one_for_all_pgdata
+
+networks:
+  one_for_all_net:
+    name: one_for_all_net
