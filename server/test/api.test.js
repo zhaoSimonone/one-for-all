@@ -1,0 +1,189 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const http = require('node:http');
+
+process.env.DATABASE_URL = 'postgres://test/test';
+process.env.JWT_SECRET = 'test-jwt-secret-that-is-long-enough-123456';
+process.env.ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+process.env.NODE_ENV = 'test';
+
+const { app, pool, encryptJson, decryptJson } = require('../src');
+
+const users = [];
+const assets = [];
+const auditLogs = [];
+
+function cloneAsset(asset) {
+  return { ...asset, tags: [...asset.tags] };
+}
+
+pool.query = async (query, params = []) => {
+  if (query.includes('INSERT INTO audit_logs')) {
+    auditLogs.push({ actor_user_id: params[0], action: params[1], asset_id: params[2], metadata: JSON.parse(params[4]) });
+    return { rowCount: 1, rows: [] };
+  }
+  if (query.includes('SELECT id, email, name, avatar_url FROM users WHERE id')) {
+    const user = users.find((item) => item.id === params[0]);
+    return { rowCount: user ? 1 : 0, rows: user ? [{ ...user }] : [] };
+  }
+  if (query.includes('SELECT id, email, name, avatar_url, password_hash FROM users WHERE email')) {
+    const user = users.find((item) => item.email === params[0]);
+    return { rowCount: user ? 1 : 0, rows: user ? [{ ...user }] : [] };
+  }
+  if (query.includes('INSERT INTO users')) {
+    if (users.some((item) => item.email === params[0])) {
+      const error = new Error('duplicate email');
+      error.code = '23505';
+      throw error;
+    }
+    const user = { id: crypto.randomUUID(), email: params[0], name: params[1], password_hash: params[2], avatar_url: null };
+    users.push(user);
+    return { rowCount: 1, rows: [{ ...user }] };
+  }
+  if (query.includes('INSERT INTO assets')) {
+    const asset = {
+      id: crypto.randomUUID(), user_id: params[0], title: params[1], type_key: params[2],
+      description: params[3], tags: JSON.parse(params[4]), shared_content: params[5],
+      private_bindings: params[6], favorite: params[7], used_at: new Date(),
+      created_at: new Date(), updated_at: new Date(),
+    };
+    assets.push(asset);
+    return { rowCount: 1, rows: [cloneAsset(asset)] };
+  }
+  if (query.includes('SELECT id, private_bindings FROM assets')) {
+    const asset = assets.find((item) => item.id === params[0] && item.user_id === params[1]);
+    return { rowCount: asset ? 1 : 0, rows: asset ? [{ id: asset.id, private_bindings: asset.private_bindings }] : [] };
+  }
+  if (query.includes('SELECT * FROM assets WHERE id = $1 AND user_id = $2')) {
+    const asset = assets.find((item) => item.id === params[0] && item.user_id === params[1]);
+    return { rowCount: asset ? 1 : 0, rows: asset ? [cloneAsset(asset)] : [] };
+  }
+  if (query.includes('UPDATE assets SET title=')) {
+    const asset = assets.find((item) => item.id === params[7] && item.user_id === params[8]);
+    if (!asset) return { rowCount: 0, rows: [] };
+    Object.assign(asset, {
+      title: params[0], type_key: params[1], description: params[2], tags: JSON.parse(params[3]),
+      shared_content: params[4], private_bindings: params[5], favorite: params[6], updated_at: new Date(),
+    });
+    return { rowCount: 1, rows: [cloneAsset(asset)] };
+  }
+  throw new Error(`Unexpected query in test double: ${query}`);
+};
+
+let server;
+let baseUrl;
+test.before(async () => {
+  server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  baseUrl = `http://127.0.0.1:${server.address().port}`;
+});
+
+test.after(async () => {
+  await new Promise((resolve) => server.close(resolve));
+  await pool.end();
+});
+
+async function request(path, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: options.method || 'GET',
+    headers: {
+      ...(options.cookie ? { Cookie: options.cookie } : {}),
+      ...(options.origin ? { Origin: options.origin } : {}),
+      ...(options.headers || {}),
+      ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const text = await response.text();
+  return {
+    response,
+    body: text ? JSON.parse(text) : null,
+    cookie: response.headers.get('set-cookie')?.split(';', 1)[0],
+  };
+}
+
+test('private bindings are authenticated ciphertext', () => {
+  const value = { OPENROUTER_API_KEY: 'secret-value', APP_URL: 'http://localhost:3000' };
+  const encrypted = encryptJson(value);
+  assert.notEqual(encrypted, JSON.stringify(value));
+  assert.deepEqual(decryptJson(encrypted), value);
+});
+
+test('authentication, asset ownership, and private response boundaries', async () => {
+  const missing = await request('/api/v1/assets');
+  assert.equal(missing.response.status, 401);
+
+  const blockedOrigin = await request('/api/v1/auth/register', {
+    method: 'POST', origin: 'https://attacker.example',
+    body: { email: 'blocked@example.com', name: 'Blocked', password: 'correct horse battery staple' },
+  });
+  assert.equal(blockedOrigin.response.status, 403);
+
+  const registered = await request('/api/v1/auth/register', {
+    method: 'POST', body: { email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' },
+  });
+  assert.equal(registered.response.status, 201);
+  const ownerCookie = registered.cookie;
+
+  const created = await request('/api/v1/assets', {
+    method: 'POST', cookie: ownerCookie,
+    body: {
+      title: 'OpenRouter', typeKey: 'credentials', sharedContent: 'KEY={{OPENROUTER_API_KEY}}',
+      privateBindings: { OPENROUTER_API_KEY: 'sk-test-secret' },
+    },
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.asset.privateBindings, undefined);
+  assert.equal(created.body.asset.privateBindingMeta.OPENROUTER_API_KEY.length, 14);
+  assert.match(JSON.stringify(created.body), /OPENROUTER_API_KEY/);
+  assert.doesNotMatch(JSON.stringify(created.body), /sk-test-secret/);
+  assert.ok(auditLogs.some((entry) => entry.action === 'auth.register'));
+  assert.ok(auditLogs.some((entry) => entry.action === 'asset.create' && entry.asset_id === created.body.asset.id));
+
+  const assetId = created.body.asset.id;
+  const invalidBindings = await request('/api/v1/assets', {
+    method: 'POST', cookie: ownerCookie,
+    body: { title: 'Invalid', typeKey: 'snippet', sharedContent: 'x', privateBindings: { lowercase_key: 'not accepted' } },
+  });
+  assert.equal(invalidBindings.response.status, 400);
+
+  const privateValues = await request(`/api/v1/assets/${assetId}/private`, { cookie: ownerCookie });
+  assert.equal(privateValues.response.status, 200);
+  assert.equal(privateValues.body.privateBindings.OPENROUTER_API_KEY, 'sk-test-secret');
+  assert.equal(privateValues.response.headers.get('cache-control'), 'no-store');
+  assert.ok(auditLogs.some((entry) => entry.action === 'asset.private.read' && entry.asset_id === assetId));
+
+  const other = await request('/api/v1/auth/register', {
+    method: 'POST', body: { email: 'other@example.com', name: 'Other', password: 'correct horse battery staple' },
+  });
+  const crossUser = await request(`/api/v1/assets/${assetId}/private`, { cookie: other.cookie });
+  assert.equal(crossUser.response.status, 404);
+
+  const malformedId = await request('/api/v1/assets/not-an-id', { cookie: ownerCookie });
+  assert.equal(malformedId.response.status, 400);
+});
+
+test('duplicate registration is rejected', async () => {
+  const duplicate = await request('/api/v1/auth/register', {
+    method: 'POST', body: { email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' },
+  });
+  assert.equal(duplicate.response.status, 409);
+});
+
+test('authentication endpoints are rate limited per source', async () => {
+  const headers = { 'X-Forwarded-For': '198.51.100.44' };
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const response = await request('/api/v1/auth/login', {
+      method: 'POST', headers,
+      body: { email: 'missing@example.com', password: 'wrong-password' },
+    });
+    assert.equal(response.response.status, 401);
+  }
+  const limited = await request('/api/v1/auth/login', {
+    method: 'POST', headers,
+    body: { email: 'missing@example.com', password: 'wrong-password' },
+  });
+  assert.equal(limited.response.status, 429);
+  assert.ok(Number(limited.response.headers.get('retry-after')) > 0);
+});
