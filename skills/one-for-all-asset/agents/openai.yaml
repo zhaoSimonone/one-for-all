@@ -1,0 +1,4 @@
+interface:
+  display_name: "One for All 资产上传"
+  short_description: "识别并上传代码、Prompt 和私密配置到 One for All"
+  default_prompt: "使用 One for All 资产上传技能，识别我提供的内容并保存到云端。"
