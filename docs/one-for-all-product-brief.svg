@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="3400" viewBox="0 0 1440 3400">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#123b2b" flood-opacity="0.10"/>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#123b2b" flood-opacity="0.07"/>
+    </filter>
+    <linearGradient id="heroGreen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c4a37"/>
+      <stop offset="1" stop-color="#14684e"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#effbf3"/>
+      <stop offset="1" stop-color="#d9f5e6"/>
+    </linearGradient>
+    <style>
+      .sans{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",Arial,sans-serif}
+      .mono{font-family:"SFMono-Regular","Roboto Mono","Noto Sans Mono",monospace}
+      .ink{fill:#17221f}.muted{fill:#687872}.green{fill:#18a56d}.darkgreen{fill:#0d4c38}.cream{fill:#fffaf0}.line{stroke:#dce8e0;stroke-width:2}.smallcaps{font-size:17px;font-weight:700;letter-spacing:2px}.h1{font-size:66px;font-weight:800;letter-spacing:-1px}.h2{font-size:43px;font-weight:800}.h3{font-size:25px;font-weight:750}.body{font-size:21px;line-height:1.55}.small{font-size:17px}.tiny{font-size:14px}
+    </style>
+  </defs>
+
+  <rect width="1440" height="3400" fill="#f7faf6"/>
+  <path d="M0 0h1440v430c-200 72-440 16-690 16S250 509 0 434V0z" fill="#eef7ef"/>
+
+  <!-- header -->
+  <g class="sans">
+    <rect x="112" y="74" width="42" height="42" rx="13" fill="#17a76e"/>
+    <path d="M132 83l-9 17h8l-3 10 12-17h-8z" fill="#fff"/>
+    <text x="171" y="103" class="ink" font-size="22" font-weight="800">one-for-all</text>
+    <text x="1115" y="99" class="muted" font-size="15" font-weight="700">个人开发资产库</text>
+    <text x="1284" y="99" class="muted" font-size="15">v0.1</text>
+  </g>
+
+  <!-- hero -->
+  <g class="sans">
+    <rect x="112" y="188" width="286" height="35" rx="18" fill="#e3f7ea" stroke="#a9e4c2"/>
+    <text x="132" y="212" class="green smallcaps" font-size="13">DEVELOPER ASSET WORKSPACE</text>
+    <text x="112" y="337" class="ink h1">把每次开发里，</text>
+    <text x="112" y="415" class="ink h1">值得复用的部分</text>
+    <text x="112" y="493" class="green h1">留在手边。</text>
+    <text x="116" y="555" class="muted body">代码、Prompt、API 接入与密钥配置统一沉淀；</text>
+    <text x="116" y="592" class="muted body">下一次开发，只需一键复制给 Codex。</text>
+
+    <g filter="url(#shadow)">
+      <rect x="880" y="214" width="422" height="324" rx="28" fill="url(#heroGreen)"/>
+      <circle cx="1256" cy="250" r="9" fill="#f8c85d"/>
+      <text x="917" y="257" fill="#bce9cf" font-size="15">ONE ASSET · TWO LAYERS</text>
+      <text x="917" y="304" fill="#fff" font-size="25" font-weight="800">共享模板</text>
+      <rect x="917" y="326" width="347" height="62" rx="12" fill="#0a3c2d"/>
+      <text x="936" y="351" fill="#9ce0b8" font-size="14" class="mono">Authorization: Bearer</text>
+      <text x="936" y="373" fill="#fff" font-size="15" class="mono">${API_BEARER_TOKEN}</text>
+      <text x="917" y="432" fill="#fff" font-size="25" font-weight="800">私密绑定</text>
+      <rect x="917" y="455" width="347" height="47" rx="11" fill="#e8fff0"/>
+      <text x="936" y="485" fill="#237d58" font-size="14" class="mono">API_BEARER_TOKEN   ••••••••••••</text>
+    </g>
+  </g>
+
+  <line x1="112" y1="620" x2="1328" y2="620" class="line"/>
+
+  <!-- why -->
+  <g class="sans">
+    <text x="112" y="705" class="green smallcaps">01 · WHY</text>
+    <text x="280" y="742" class="ink h2">代码不是难找，难的是找回“当时为什么这样配”。</text>
+    <text x="280" y="792" class="muted body">开发过程里的好方案，往往散落在聊天记录、旧项目和临时配置里。</text>
+    <text x="280" y="826" class="muted body">真正高频的复用，不应该依赖记忆和翻找。</text>
+
+    <g filter="url(#soft)">
+      <rect x="112" y="897" width="376" height="246" rx="18" fill="#fff" stroke="#e2ebe4"/>
+      <rect x="532" y="897" width="376" height="246" rx="18" fill="#fff" stroke="#e2ebe4"/>
+      <rect x="952" y="897" width="376" height="246" rx="18" fill="#fff" stroke="#e2ebe4"/>
+    </g>
+    <circle cx="157" cy="947" r="20" fill="#e3f7ea"/><text x="150" y="954" class="green" font-size="17" font-weight="800">↗</text>
+    <circle cx="577" cy="947" r="20" fill="#fff0d3"/><text x="570" y="954" fill="#bc7c23" font-size="17" font-weight="800">↻</text>
+    <circle cx="997" cy="947" r="20" fill="#e8edf9"/><text x="991" y="954" fill="#5572b5" font-size="17" font-weight="800">!</text>
+    <text x="143" y="1014" class="ink h3">到处翻聊天记录</text>
+    <text x="143" y="1054" class="muted small">“上次那个 curl 和配置在哪？”</text>
+    <text x="143" y="1081" class="muted small">找到内容，已经不知道哪个版本能用。</text>
+    <text x="563" y="1014" class="ink h3">重复粘贴配置</text>
+    <text x="563" y="1054" class="muted small">同一套 OpenRouter、COS、数据库配置，</text>
+    <text x="563" y="1081" class="muted small">每个新项目都重新搭一遍。</text>
+    <text x="983" y="1014" class="ink h3">密钥和模板混在一起</text>
+    <text x="983" y="1054" class="muted small">通用代码想分享，真实 Key 又不能</text>
+    <text x="983" y="1081" class="muted small">直接粘到团队、远程 Agent 或聊天里。</text>
+
+    <rect x="112" y="1190" width="1216" height="72" rx="12" fill="#fff4da"/>
+    <rect x="112" y="1190" width="5" height="72" rx="2" fill="#f2bb47"/>
+    <text x="143" y="1234" fill="#896b31" font-size="18" font-weight="700">产品机会：</text>
+    <text x="269" y="1234" fill="#896b31" font-size="18">把“能复用的工作成果”和“只属于你的秘密”放进同一资产，但用两层数据管理。</text>
+  </g>
+
+  <line x1="112" y1="1351" x2="1328" y2="1351" class="line"/>
+
+  <!-- how -->
+  <g class="sans">
+    <text x="112" y="1437" class="green smallcaps">02 · HOW IT WORKS</text>
+    <text x="280" y="1474" class="ink h2">一份资产，两层内容；需要时再组合。</text>
+    <text x="280" y="1524" class="muted body">完整粘贴也没关系，One for All 自动识别敏感值，帮你把可分享和不可分享的部分分开。</text>
+
+    <g>
+      <rect x="112" y="1610" width="440" height="82" rx="15" fill="#fff" stroke="#e1ebe4"/>
+      <circle cx="155" cy="1651" r="19" fill="#dff6e8"/><text x="149" y="1657" class="green" font-size="16" font-weight="800">1</text>
+      <text x="191" y="1644" class="ink" font-size="19" font-weight="800">直接粘贴完整内容</text><text x="191" y="1670" class="muted tiny">curl、SDK、Prompt、配置或单独 Key</text>
+      <rect x="112" y="1711" width="440" height="82" rx="15" fill="#fff" stroke="#e1ebe4"/>
+      <circle cx="155" cy="1752" r="19" fill="#dff6e8"/><text x="149" y="1758" class="green" font-size="16" font-weight="800">2</text>
+      <text x="191" y="1745" class="ink" font-size="19" font-weight="800">识别 Bearer / API Key</text><text x="191" y="1771" class="muted tiny">不要求你先手动拆分工作模板和密钥</text>
+      <rect x="112" y="1812" width="440" height="82" rx="15" fill="#fff" stroke="#e1ebe4"/>
+      <circle cx="155" cy="1853" r="19" fill="#dff6e8"/><text x="149" y="1859" class="green" font-size="16" font-weight="800">3</text>
+      <text x="191" y="1846" class="ink" font-size="19" font-weight="800">模板替换为环境变量</text><text x="191" y="1872" class="muted tiny">Authorization: Bearer ${API_BEARER_TOKEN}</text>
+      <rect x="112" y="1913" width="440" height="82" rx="15" fill="#fff" stroke="#e1ebe4"/>
+      <circle cx="155" cy="1954" r="19" fill="#dff6e8"/><text x="149" y="1960" class="green" font-size="16" font-weight="800">4</text>
+      <text x="191" y="1947" class="ink" font-size="19" font-weight="800">私密配置按账号加密保存</text><text x="191" y="1973" class="muted tiny">AES-256-GCM · owner-only API · PostgreSQL</text>
+      <rect x="112" y="2014" width="440" height="82" rx="15" fill="#fff" stroke="#e1ebe4"/>
+      <circle cx="155" cy="2055" r="19" fill="#dff6e8"/><text x="149" y="2061" class="green" font-size="16" font-weight="800">5</text>
+      <text x="191" y="2048" class="ink" font-size="19" font-weight="800">一键复制给 Codex</text><text x="191" y="2074" class="muted tiny">默认安全复制，确认后才组合真实配置</text>
+    </g>
+
+    <g filter="url(#shadow)">
+      <rect x="625" y="1601" width="703" height="530" rx="28" fill="#162520"/>
+      <text x="671" y="1664" fill="#b9d9c7" font-size="16">资产详情 · 账号隔离</text>
+      <text x="671" y="1713" fill="#fff" font-size="31" font-weight="800">OpenRouter API 接入</text>
+      <rect x="671" y="1750" width="611" height="182" rx="16" fill="#203b31"/>
+      <text x="699" y="1791" fill="#a3d9ba" font-size="14">共享模板 · 可安全分享</text>
+      <text x="699" y="1830" fill="#eefcf2" font-size="16" class="mono">const client = new OpenAI({</text>
+      <text x="699" y="1861" fill="#eefcf2" font-size="16" class="mono">  apiKey: process.env.OPENROUTER_API_KEY,</text>
+      <text x="699" y="1892" fill="#eefcf2" font-size="16" class="mono">});</text>
+      <rect x="671" y="1960" width="611" height="124" rx="16" fill="url(#mint)"/>
+      <text x="699" y="2002" fill="#1c6d4b" font-size="14">私密配置 · 仅当前账号可读</text>
+      <text x="699" y="2043" fill="#244338" font-size="16" class="mono">OPENROUTER_API_KEY    •••••••••••••••</text>
+      <text x="699" y="2074" fill="#6b8579" font-size="14">数据库密文保存 · 普通列表只显示变量名和长度</text>
+    </g>
+  </g>
+
+  <g class="sans">
+    <rect x="112" y="2173" width="1216" height="76" rx="12" fill="#e8f3ff"/>
+    <rect x="112" y="2173" width="5" height="76" rx="2" fill="#5e9bea"/>
+    <text x="143" y="2219" fill="#41658d" font-size="18" font-weight="700">默认路径：</text>
+    <text x="268" y="2219" fill="#41658d" font-size="18">复制共享模板，不带真实值；只有点击“复制含私密配置”并确认后，才进入剪贴板。</text>
+  </g>
+
+  <line x1="112" y1="2308" x2="1328" y2="2308" class="line"/>
+
+  <!-- security -->
+  <g class="sans">
+    <text x="112" y="2394" class="green smallcaps">03 · SECURITY BY DEFAULT</text>
+    <text x="280" y="2431" class="ink h2">共享得出去，密钥留得住。</text>
+    <text x="280" y="2481" class="muted body">安全不是额外的流程，而是资产模型本身的一部分。</text>
+    <g filter="url(#soft)">
+      <rect x="112" y="2550" width="376" height="235" rx="18" fill="#fff" stroke="#e2ebe4"/>
+      <rect x="532" y="2550" width="376" height="235" rx="18" fill="#fff" stroke="#e2ebe4"/>
+      <rect x="952" y="2550" width="376" height="235" rx="18" fill="#fff" stroke="#e2ebe4"/>
+    </g>
+    <circle cx="157" cy="2600" r="20" fill="#e3f7ea"/><text x="149" y="2607" class="green" font-size="17" font-weight="800">◎</text>
+    <circle cx="577" cy="2600" r="20" fill="#e3f7ea"/><text x="570" y="2607" class="green" font-size="17" font-weight="800">◆</text>
+    <circle cx="997" cy="2600" r="20" fill="#e3f7ea"/><text x="991" y="2607" class="green" font-size="17" font-weight="800">✓</text>
+    <text x="143" y="2668" class="ink h3">按用户隔离</text>
+    <text x="143" y="2710" class="muted small">所有资产读写都绑定当前账号，</text><text x="143" y="2737" class="muted small">其他用户无法看到你的私密配置。</text>
+    <text x="563" y="2668" class="ink h3">AES-256-GCM 加密</text>
+    <text x="563" y="2710" class="muted small">数据库只保存密文，普通资产接口</text><text x="563" y="2737" class="muted small">不回显真实值。</text>
+    <text x="983" y="2668" class="ink h3">owner-only 读取</text>
+    <text x="983" y="2710" class="muted small">私密读取单独审计，复制前明确确认，</text><text x="983" y="2737" class="muted small">避免误分享长期生产 Key。</text>
+
+    <rect x="112" y="2840" width="1216" height="92" rx="16" fill="#123f2d"/>
+    <text x="145" y="2877" fill="#b6e4c7" font-size="15" font-weight="700">安全边界</text>
+    <text x="145" y="2907" fill="#fff" font-size="18">普通复制 = 共享模板；组合复制 = 明确确认 + 本地工具优先；云端保存 = 加密密文 + 用户隔离。</text>
+  </g>
+
+  <line x1="112" y1="3000" x2="1328" y2="3000" class="line"/>
+
+  <!-- MVP / next -->
+  <g class="sans">
+    <text x="112" y="3086" class="green smallcaps">04 · MVP → NEXT</text>
+    <text x="280" y="3123" class="ink h2">先把个人开发者的高频复用，做成一个闭环。</text>
+    <g filter="url(#soft)">
+      <rect x="112" y="3185" width="585" height="155" rx="20" fill="#123f2d"/>
+      <rect x="727" y="3185" width="601" height="155" rx="20" fill="#fff" stroke="#dbe8df"/>
+    </g>
+    <text x="145" y="3235" fill="#fff" font-size="28" font-weight="800">V0.1 · 可用的资产闭环</text>
+    <text x="145" y="3273" fill="#bce6ca" font-size="16">分类 · 标签 · 搜索 · 收藏 · 云端同步 · 私密绑定 · Codex 复制</text>
+    <text x="760" y="3235" class="ink" font-size="24" font-weight="800">下一步：从个人资产库走向团队工作台</text>
+    <text x="760" y="3273" class="muted" font-size="16">Workspace 权限 · 公开/私有可见性 · Secret Manager · CLI / Skill</text>
+  </g>
+
+  <rect x="112" y="3365" width="1216" height="2" fill="#dce8e0"/>
+  <g class="sans">
+    <text x="112" y="3393" class="muted tiny">one-for-all · 把好用的东西，留在手边。</text>
+    <text x="1110" y="3393" class="muted tiny">tools.chatcanvas.online</text>
+  </g>
+</svg>
