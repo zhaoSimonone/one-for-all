@@ -1,8 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowUpRight, Bookmark, Box, Check, ChevronDown, Cloud, Code2, Copy, Database, Download, FileCode2, KeyRound, Layers3, LogOut, Menu, MoreHorizontal, Plus, Search, Settings2, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, Upload, UserRound, X, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, AlignLeft, Bookmark, Box, Braces, Check, ChevronDown, ChevronUp, Cloud, Code2, Copy, Database, Download, FileCode2, FileDiff, KeyRound, Layers3, ListFilter, LogOut, Menu, Maximize2, Minimize2, MoreHorizontal, Plus, RotateCcw, Search, Settings2, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, Upload, UserRound, WandSparkles, Wrench, X, Zap, AlertCircle } from 'lucide-react'
 import './styles.css'
 import './privacy.css'
+import { EditorState } from '@codemirror/state'
+import { EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { foldAll, foldGutter, foldedRanges, unfoldEffect, syntaxHighlighting, unfoldAll, HighlightStyle } from '@codemirror/language'
+import { SearchQuery, search, setSearchQuery } from '@codemirror/search'
+import { collectSearchMatches, nextSearchIndex, jsonSearchHighlights } from './tools/json-search'
+import { json } from '@codemirror/lang-json'
+import { tags } from '@lezer/highlight'
+import { parseJsonWithRecovery } from './tools/loose-json'
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
 const palette = { credentials: ['凭证', KeyRound, 'coral'], infra: ['基础设施', Cloud, 'blue'], prompt: ['提示词', Sparkles, 'violet'], snippet: ['代码片段', Terminal, 'ink'], database: ['数据库', Database, 'green'], component: ['组件', Box, 'amber'] }
@@ -36,8 +45,255 @@ const parsePrivateDraft = (text, asset) => { const parsed = parseEnvText(text); 
 
 async function apiRequest(path, options = {}) { const response = await fetch(`${API_BASE}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options }); const body = response.status === 204 ? null : await response.json().catch(() => null); if (!response.ok) throw new Error(body?.message || '请求失败'); return body }
 
+const TOOL_SAMPLE = `{
+  "name": "one-for-all",
+  "version": 1,
+  "features": ["assets", "tools"],
+  "settings": { "theme": "light", "autosave": true }
+}`
+
+const parseNestedJson = (value) => {
+  if (Array.isArray(value)) return value.map(parseNestedJson)
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, parseNestedJson(item)]))
+  if (typeof value === 'string') {
+    const candidate = value.trim()
+    if ((candidate.startsWith('{') && candidate.endsWith('}')) || (candidate.startsWith('[') && candidate.endsWith(']'))) {
+      try { return parseNestedJson(JSON.parse(candidate)) } catch {}
+    }
+  }
+  return value
+}
+
+const prettyJson = (text, space = 2, sortKeys = false, nestedParse = true) => {
+  const { value: parsed, recovered } = parseJsonWithRecovery(text)
+  const value = nestedParse ? parseNestedJson(parsed) : parsed
+  const sortDeep = (item) => {
+    if (Array.isArray(item)) return item.map(sortDeep)
+    if (item && typeof item === 'object') return Object.keys(item).sort().reduce((out, key) => ({ ...out, [key]: sortDeep(item[key]) }), {})
+    return item
+  }
+  return { output: JSON.stringify(sortKeys ? sortDeep(value) : value, null, space), recovered }
+}
+
+const displayValue = (value) => value === undefined ? '—' : typeof value === 'string' ? `"${value}"` : JSON.stringify(value)
+const isObjectLike = (value) => value && typeof value === 'object'
+const childPath = (path, key, array) => array ? `${path}[${key}]` : `${path}.${key}`
+const makeDiffRows = (left, right, path = '$') => {
+  if (JSON.stringify(left) === JSON.stringify(right)) return [{ path, left, right, status: 'same' }]
+  if (isObjectLike(left) && isObjectLike(right) && Array.isArray(left) === Array.isArray(right)) {
+    const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)]))
+    return keys.flatMap((key) => makeDiffRows(left[key], right[key], childPath(path, key, Array.isArray(left))))
+  }
+  if (left === undefined) return [{ path, right, status: 'added' }]
+  if (right === undefined) return [{ path, left, status: 'removed' }]
+  return [{ path, left, right, status: 'changed' }]
+}
+
+function ToolLibrary({ onSelect }) {
+  return <div className="tools-page"><div className="tools-hero"><div><p className="eyebrow">UTILITY LIBRARY <span>·</span> BROWSER TOOLS</p><h1>小工具，解决大问题。</h1><p>把日常开发中高频使用的工具集中在这里，数据只在当前浏览器本地处理。</p></div><div className="tools-hero-mark"><Wrench size={28} /><span>LOCAL<br />ONLY</span></div></div><div className="tool-grid"><button className="tool-card featured" onClick={() => onSelect('json-format')}><div className="tool-card-icon blue-bg"><Braces size={22} /></div><div className="tool-card-main"><span className="tool-badge">JSON</span><h2>JSON 格式化</h2><p>校验、格式化、压缩和排序 JSON，快速把一段配置整理成可读格式。</p><div className="tool-card-footer"><span>支持文件导入</span><ArrowUpRight size={15} /></div></div></button><button className="tool-card" onClick={() => onSelect('json-diff')}><div className="tool-card-icon violet-bg"><FileDiff size={22} /></div><div className="tool-card-main"><span className="tool-badge violet">COMPARE</span><h2>JSON Diff</h2><p>并排比较两个 JSON，按字段路径查看新增、删除和修改内容。</p><div className="tool-card-footer"><span>结构化差异</span><ArrowUpRight size={15} /></div></div></button></div><div className="tools-coming"><div><span className="coming-dot" /><strong>更多工具正在路上</strong><p>URL 编码、时间戳转换、正则测试等开发工具将陆续加入。</p></div><span className="tool-count">02 tools</span></div></div>
+}
+
+function ToolsShell({ onSelect }) { return <><header className="topbar"><div className="breadcrumbs"><span>工作区</span><span>/</span><strong>工具库</strong></div><div className="tool-local-badge"><ShieldCheck size={14} /> 本地处理</div></header><section className="content-wrap tools-content-wrap"><ToolLibrary onSelect={onSelect} /></section></> }
+
+const jsonHighlightStyle = HighlightStyle.define([
+  { tag: tags.propertyName, color: '#b42318' },
+  { tag: tags.string, color: '#155eef' },
+  { tag: tags.number, color: '#087443' },
+  { tag: tags.bool, color: '#7a3e9d' },
+  { tag: tags.null, color: '#8a5a00' },
+  { tag: [tags.brace, tags.punctuation], color: '#68768a' },
+])
+
+const jsonEditorTheme = EditorView.theme({
+  '&': { backgroundColor: '#fff', color: '#2f3c51', height: '100%' },
+  '.cm-content': { caretColor: '#4263eb', fontFamily: "'DM Mono', monospace", fontSize: '12px', lineHeight: '1.72', padding: '16px 0' },
+  '.cm-line': { padding: '0 16px 0 8px' },
+  '.cm-gutters': { backgroundColor: '#fbfcfe', color: '#a5afbc', border: '0', borderRight: '1px solid #edf0f4', fontFamily: "'DM Mono', monospace", fontSize: '11px' },
+  '.cm-activeLine': { backgroundColor: '#f5f8ff' },
+  '.cm-activeLineGutter': { backgroundColor: '#eef2ff', color: '#4263eb' },
+  '.cm-foldGutter': { color: '#8b98a8' },
+  '.cm-foldPlaceholder': { backgroundColor: '#eef2ff', border: '1px solid #d6def8', color: '#4263eb', padding: '0 5px', borderRadius: '4px' },
+  '.cm-selectionBackground, ::selection': { backgroundColor: '#dce7ff !important' },
+  '.cm-searchMatch': { backgroundColor: '#fff0bd', outline: '1px solid #e6bd4b' },
+  '.cm-searchMatch-selected': { backgroundColor: '#ffe08a' },
+  '.cm-panel': { backgroundColor: '#fff', borderTop: '1px solid #e4e8ef', padding: '8px 12px' },
+  '.cm-panel input': { border: '1px solid #dce2eb', borderRadius: '5px', padding: '5px 7px', font: "11px 'DM Sans', sans-serif" },
+}, { dark: false })
+
+const JsonEditor = forwardRef(function JsonEditor({ value, onChange, readOnly = false, className = '', placeholder = '' }, ref) {
+  const hostRef = useRef(null)
+  const viewRef = useRef(null)
+  const valueRef = useRef(value)
+  const onChangeRef = useRef(onChange)
+  valueRef.current = value
+  onChangeRef.current = onChange
+  useImperativeHandle(ref, () => ({
+    foldAll: () => viewRef.current && foldAll(viewRef.current),
+    unfoldAll: () => viewRef.current && unfoldAll(viewRef.current),
+    setSearch: (query, options = {}) => {
+      const view = viewRef.current
+      if (view) view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: query, literal: true, ...options })) })
+    },
+    clearMatch: () => {
+      const view = viewRef.current
+      if (view) view.dispatch({ selection: { anchor: view.state.selection.main.head } })
+    },
+    revealMatch: ({ from, to }) => {
+      const view = viewRef.current
+      if (!view) return
+      const effects = [EditorView.scrollIntoView(from, { y: 'center' })]
+      foldedRanges(view.state).between(from, to, (start, end) => effects.push(unfoldEffect.of({ from: start, to: end })))
+      view.dispatch({ selection: { anchor: from, head: to }, effects })
+    },
+    get element() { return hostRef.current },
+    focus: () => viewRef.current?.focus(),
+  }), [])
+  useEffect(() => {
+    if (!hostRef.current) return undefined
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (update.docChanged && !readOnly) onChangeRef.current?.(update.state.doc.toString())
+    })
+    const state = EditorState.create({
+      doc: valueRef.current,
+      extensions: [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightActiveLine(),
+        foldGutter(),
+        json(),
+        search(),
+        jsonSearchHighlights,
+        syntaxHighlighting(jsonHighlightStyle),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        EditorView.lineWrapping,
+        jsonEditorTheme,
+        updateListener,
+        ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
+      ],
+    })
+    const view = new EditorView({ state, parent: hostRef.current })
+    viewRef.current = view
+    return () => { view.destroy(); viewRef.current = null }
+  }, [readOnly])
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view || view.state.doc.toString() === value) return
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
+  }, [value])
+  return <div ref={hostRef} className={`json-cm-editor ${className} ${!value && placeholder ? 'is-empty' : ''}`} data-placeholder={!value ? placeholder : ''} />
+})
+
+function EditorActions({ editorRef, onSearch, compact = false }) {
+  return <div className={`editor-actions ${compact ? 'compact' : ''}`}>
+    <button className="editor-action" onClick={() => editorRef.current?.foldAll()} title="折叠全部"><ChevronDown size={13} /> 折叠</button>
+    <button className="editor-action" onClick={() => editorRef.current?.unfoldAll()} title="展开全部"><ChevronUp size={13} /> 展开</button>
+    <button className="editor-action" onClick={onSearch} title="搜索此栏"><Search size={13} /> 搜索</button>
+  </div>
+}
+
+function JsonSearchBar({ mode, query, setQuery, scope, setScope, matchCase, setMatchCase, useRegex, setUseRegex, wholeWord, setWholeWord, onPrevious, onNext, onClose, inputRef, status, error, hasMatches }) {
+  const options = mode === 'format' ? [['both', '全部'], ['input', '输入'], ['result', '结果']] : [['both', '全部'], ['left', '左侧'], ['right', '右侧']]
+  return <div className="json-searchbar" role="search" aria-label="JSON 内容搜索" onKeyDown={(event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose() }
+    if (event.key === 'Enter' && event.target === inputRef.current && !event.nativeEvent.isComposing) {
+      event.preventDefault(); event.shiftKey ? onPrevious() : onNext()
+    }
+  }}>
+    <div className="json-search-input"><Search size={16} />
+      <input ref={inputRef} aria-label="搜索 JSON" aria-invalid={!!error} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索字段或值…" />
+      <button className="search-clear" onClick={() => setQuery('')} aria-label="清除搜索" title="清除搜索"><X size={14} /></button>
+    </div>
+    <div className="search-scope-tabs" aria-label="搜索范围">{options.map(([key, label]) => <button key={key} aria-pressed={scope === key} className={scope === key ? 'active' : ''} onClick={() => setScope(key)}>{label}</button>)}</div>
+    <div className="search-options">
+      <button aria-label="区分大小写" title="区分大小写" aria-pressed={matchCase} onClick={() => setMatchCase(!matchCase)}>Aa</button>
+      <button aria-label="正则表达式" title="正则表达式" aria-pressed={useRegex} onClick={() => setUseRegex(!useRegex)}>.*</button>
+      <button aria-label="整词匹配" title="整词匹配" aria-pressed={wholeWord} onClick={() => setWholeWord(!wholeWord)}>整词</button>
+    </div>
+    <span className={`search-status ${error ? 'invalid' : ''}`} role="status">{error || status}</span>
+    <div className="search-nav">
+      <button onClick={onPrevious} disabled={!hasMatches} aria-label="上一个" title="上一个（Shift + Enter）"><ChevronUp size={15} /></button>
+      <button onClick={onNext} disabled={!hasMatches} aria-label="下一个" title="下一个（Enter）"><ChevronDown size={15} /></button>
+      <button onClick={onClose} aria-label="关闭搜索" title="关闭搜索（Esc）"><X size={15} /></button>
+    </div>
+  </div>
+}
+
+function JsonTool({ mode = 'format', onBack }) {
+  const [activeMode, setActiveMode] = useState(mode)
+  const [source, setSource] = useState(TOOL_SAMPLE)
+  const [left, setLeft] = useState(`{\n  "name": "one-for-all",\n  "version": 1,\n  "features": ["assets", "tools"]\n}`)
+  const [right, setRight] = useState(`{\n  "name": "one-for-all",\n  "version": 2,\n  "features": ["assets", "tools", "json-diff"],\n  "settings": { "theme": "light" }\n}`)
+  const [result, setResult] = useState('')
+  const [error, setError] = useState('')
+  const [parseNotice, setParseNotice] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [nestedParse, setNestedParse] = useState(true)
+  const [formatFullscreen, setFormatFullscreen] = useState(false)
+  const [diffOnly, setDiffOnly] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQueryText] = useState('')
+  const [searchScope, setSearchScope] = useState('both')
+  const [matchCase, setMatchCase] = useState(false)
+  const [useRegex, setUseRegex] = useState(false)
+  const [wholeWord, setWholeWord] = useState(false)
+  const [activeMatch, setActiveMatch] = useState(-1)
+  const searchInputRef = useRef(null)
+  const sourceEditorRef = useRef(null)
+  const resultEditorRef = useRef(null)
+  const leftEditorRef = useRef(null)
+  const rightEditorRef = useRef(null)
+  const fileRef = useRef(null)
+  const diffState = useMemo(() => {
+    try {
+      const leftValue = JSON.parse(left); const rightValue = JSON.parse(right)
+      const rows = makeDiffRows(leftValue, rightValue)
+      return { leftValue, rightValue, rows, error: '' }
+    } catch (err) { return { rows: [], error: err.message } }
+  }, [left, right])
+  const searchData = useMemo(() => collectSearchMatches(
+    activeMode === 'format' ? { input: source, result } : { left, right },
+    searchScope, searchOpen ? searchQuery : '', { caseSensitive: matchCase, regexp: useRegex, wholeWord }
+  ), [activeMode, source, result, left, right, searchScope, searchOpen, searchQuery, matchCase, useRegex, wholeWord])
+  const searchRefMap = () => activeMode === 'format' ? { input: sourceEditorRef, result: resultEditorRef } : { left: leftEditorRef, right: rightEditorRef }
+  const revealSearchMatch = (match) => {
+    const refs = searchRefMap()
+    Object.values(refs).forEach(ref => ref.current?.clearMatch())
+    if (match) refs[match.side]?.current?.revealMatch(match)
+  }
+  useEffect(() => {
+    const refs = searchRefMap()
+    Object.entries(refs).forEach(([key, ref]) => {
+      const enabled = searchOpen && (searchScope === 'both' || searchScope === key)
+      ref.current?.setSearch(enabled ? searchQuery : '', { caseSensitive: matchCase, regexp: useRegex, wholeWord })
+    })
+    setActiveMatch(searchData.matches.length ? 0 : -1)
+    revealSearchMatch(searchData.matches[0])
+  }, [searchData])
+  useEffect(() => { if (searchOpen) searchInputRef.current?.focus() }, [searchOpen])
+  const moveSearch = (direction) => {
+    const index = nextSearchIndex(activeMatch, searchData.matches.length, direction)
+    setActiveMatch(index)
+    revealSearchMatch(searchData.matches[index])
+  }
+  const openGlobalSearch = (scope = 'both') => {
+    setSearchScope(scope); setSearchOpen(true); searchInputRef.current?.focus()
+  }
+  const closeGlobalSearch = () => setSearchOpen(false)
+  const searchStatus = !searchQuery ? '输入关键词' : !searchData.matches.length ? '无匹配' : `${activeMatch + 1} / ${searchData.matches.length}${searchData.truncated ? '+' : ''} · ${activeMode === 'format' ? (searchData.matches[activeMatch]?.side === 'result' ? '结果' : '输入') : (searchData.matches[activeMatch]?.side === 'right' ? '右侧' : '左侧')}`
+
+  const runFormat = (action = 'pretty') => {
+    try { const { output, recovered } = prettyJson(source, action === 'compact' ? 0 : 2, action === 'sort', nestedParse); setResult(output); setError(''); setParseNotice(recovered ? '已自动修复非标准 JSON：补全外层对象并规范化字段名。' : '') } catch (err) { setError(`JSON 无法解析：${err.message}`); setParseNotice(''); setResult('') }
+  }
+  const copy = async (text) => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch {} }
+  const download = (text, filename) => { const blob = new Blob([text], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url) }
+  const importFile = (event, setter) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setter(String(reader.result || '')); reader.readAsText(file); event.target.value = '' }
+  const stat = activeMode === 'diff' ? diffState.rows.filter((row) => row.status !== 'same').length : result ? result.split('\n').length : 0
+  return <div className={`tool-workspace ${formatFullscreen && activeMode === 'format' ? 'format-fullscreen' : ''}`} onKeyDownCapture={(event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); event.stopPropagation(); const panel = event.target.closest('.json-cm-editor'); openGlobalSearch(panel ? (activeMode === 'format' ? (panel.classList.contains('json-result') ? 'result' : 'input') : (panel === rightEditorRef.current?.element ? 'right' : 'left')) : 'both') } }}><div className="tool-topline"><button className="back-tool" onClick={onBack}><ArrowLeft size={16} /> 工具库</button><div className="tool-title"><div className="tool-title-icon"><Braces size={18} /></div><div><h1>JSON 工具</h1><span>在浏览器本地处理，不上传内容</span></div></div><div className="tool-mode-tabs"><button className={activeMode === 'format' ? 'active' : ''} onClick={() => { setActiveMode('format'); setSearchScope('both') }}><AlignLeft size={15} /> 格式化</button><button className={activeMode === 'diff' ? 'active' : ''} onClick={() => { setActiveMode('diff'); setSearchScope('both') }}><FileDiff size={15} /> Diff</button></div></div>{searchOpen && <JsonSearchBar mode={activeMode} query={searchQuery} setQuery={setSearchQueryText} scope={searchScope} setScope={setSearchScope} matchCase={matchCase} setMatchCase={setMatchCase} useRegex={useRegex} setUseRegex={setUseRegex} wholeWord={wholeWord} setWholeWord={setWholeWord} onPrevious={() => moveSearch('previous')} onNext={() => moveSearch('next')} onClose={closeGlobalSearch} inputRef={searchInputRef} status={searchStatus} error={searchData.error} hasMatches={searchData.matches.length > 0} />} {activeMode === 'format' ? <><div className="tool-actionbar"><div><button className="soft-button" onClick={() => { setSource(TOOL_SAMPLE); setResult(''); setError(''); setParseNotice('') }}><WandSparkles size={15} /> 示例</button><button className="soft-button" onClick={() => fileRef.current?.click()}><Upload size={15} /> 导入 JSON</button><input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(event) => importFile(event, setSource)} /><label className="nested-toggle" title="自动展开值为 JSON 的字符串"><input type="checkbox" checked={nestedParse} onChange={(event) => setNestedParse(event.target.checked)} /> 嵌套解析</label></div><div className="tool-actionbar-right"><span className="tool-stat">{stat ? `${stat} 行` : '等待处理'}</span><button className="soft-button" onClick={() => openGlobalSearch()}><Search size={15} /> 搜索</button><button className="soft-button" onClick={() => setFormatFullscreen((value) => !value)}>{formatFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />} {formatFullscreen ? '退出全屏' : '全屏'}</button><button className="soft-button" onClick={() => { setSource(''); setResult(''); setError(''); setParseNotice('') }}><RotateCcw size={15} /> 清空</button></div></div><div className="json-format-grid"><section className="json-editor-panel"><div className="panel-label"><div><span>输入 JSON</span><small>粘贴或导入文件</small></div><EditorActions editorRef={sourceEditorRef} onSearch={() => openGlobalSearch('input')} compact /></div><JsonEditor ref={sourceEditorRef} className="json-editor" value={source} onChange={setSource} placeholder="粘贴 JSON，或点击上方导入文件…" /></section><section className="json-result-panel"><div className="panel-label"><div><span>处理结果</span><small>{result ? '已生成 · 可折叠' : '运行操作后显示'}</small></div><EditorActions editorRef={resultEditorRef} onSearch={() => openGlobalSearch('result')} compact /></div><JsonEditor ref={resultEditorRef} className="json-result" value={result} readOnly placeholder="格式化结果会显示在这里…" /></section></div><div className="format-actions"><button className="primary-button" onClick={() => runFormat('pretty')}><Braces size={16} /> 格式化</button><button className="secondary-button" onClick={() => runFormat('compact')}><Minimize2 size={15} /> 压缩</button><button className="secondary-button" onClick={() => runFormat('sort')}><ListFilter size={15} /> 格式化并排序</button>{result && <><button className="secondary-button action-right" onClick={() => copy(result)}>{copied ? <Check size={15} /> : <Copy size={15} />} {copied ? '已复制' : '复制结果'}</button><button className="secondary-button" onClick={() => download(result, 'formatted.json')}><Download size={15} /> 下载</button></>}</div>{error && <div className="tool-error"><AlertCircle size={16} /> {error}</div>}{parseNotice && <div className="tool-recovery-notice"><Check size={16} /> {parseNotice}</div>}<div className="tool-tip"><ShieldCheck size={16} /><span><strong>隐私提示</strong> 所有 JSON 仅在你的浏览器内处理，不会发送到服务器。<em>嵌套解析会将合法的 JSON 字符串转换为对象。</em></span></div></> : <><div className="tool-actionbar diff-toolbar"><div><span className="diff-legend"><i className="legend-added" /> 新增 <i className="legend-removed" /> 删除 <i className="legend-changed" /> 修改</span><label className="nested-toggle diff-toggle"><input type="checkbox" checked={diffOnly} onChange={(event) => setDiffOnly(event.target.checked)} /> 仅显示差异</label></div><div className="tool-actionbar-right"><span className="tool-stat">{diffState.error ? 'JSON 待修正' : `${stat} 处差异`}</span><button className="soft-button" onClick={() => openGlobalSearch()}><Search size={15} /> 搜索</button><button className="soft-button" onClick={() => { setLeft(''); setRight('') }}><RotateCcw size={15} /> 清空</button></div></div><div className="diff-input-grid"><section className="json-editor-panel"><div className="panel-label"><div><span>原始 JSON <em>LEFT</em></span></div><EditorActions editorRef={leftEditorRef} onSearch={() => openGlobalSearch('left')} compact /><button className="panel-import" onClick={() => document.getElementById('diff-file-left')?.click()}><Upload size={13} /> 导入</button><input id="diff-file-left" type="file" accept=".json,application/json" hidden onChange={(event) => importFile(event, setLeft)} /></div><JsonEditor ref={leftEditorRef} className="json-editor diff-input" value={left} onChange={setLeft} placeholder="输入左侧 JSON…" /></section><section className="json-editor-panel"><div className="panel-label"><div><span>对比 JSON <em>RIGHT</em></span></div><EditorActions editorRef={rightEditorRef} onSearch={() => openGlobalSearch('right')} compact /><button className="panel-import" onClick={() => document.getElementById('diff-file-right')?.click()}><Upload size={13} /> 导入</button><input id="diff-file-right" type="file" accept=".json,application/json" hidden onChange={(event) => importFile(event, setRight)} /></div><JsonEditor ref={rightEditorRef} className="json-editor diff-input" value={right} onChange={setRight} placeholder="输入右侧 JSON…" /></section></div>{diffState.error ? <div className="tool-error"><AlertCircle size={16} /> 对比内容格式错误：{diffState.error}</div> : <section className="diff-result"><div className="diff-result-head"><div><strong>差异结果</strong><span>按字段路径展开对比</span></div><button className="secondary-button" onClick={() => copy(JSON.stringify(diffState.rows, null, 2))}>{copied ? <Check size={15} /> : <Copy size={15} />} {copied ? '已复制' : '复制差异'}</button></div><div className="diff-rows">{diffState.rows.filter((row) => !diffOnly || row.status !== 'same').map((row, index) => <div className={`diff-row ${row.status}`} key={`${row.path}-${index}`}><div className="diff-status">{row.status === 'added' ? '+' : row.status === 'removed' ? '−' : row.status === 'changed' ? '↕' : '·'}</div><code>{row.path}</code><div className="diff-value left-value">{row.status === 'added' ? <span className="muted-value">—</span> : displayValue(row.left)}</div><div className="diff-value right-value">{row.status === 'removed' ? <span className="muted-value">—</span> : displayValue(row.right)}</div><span className="diff-status-label">{row.status === 'added' ? '新增' : row.status === 'removed' ? '删除' : row.status === 'changed' ? '修改' : '相同'}</span></div>)}</div></section>}</>}</div>
+}
+
 function App() {
-  const [assets, setAssets] = useState(readLocal); const [user, setUser] = useState(null); const [authChecked, setAuthChecked] = useState(false); const [mode, setMode] = useState('local'); const [activeType, setActiveType] = useState('all'); const [view, setView] = useState('all'); const [query, setQuery] = useState(''); const [selected, setSelected] = useState(null); const [showAdd, setShowAdd] = useState(false); const [pendingMigration, setPendingMigration] = useState(null); const [migrationBusy, setMigrationBusy] = useState(false); const [toast, setToast] = useState(''); const [mobileNav, setMobileNav] = useState(false); const fileRef = useRef(null)
+  const [assets, setAssets] = useState(readLocal); const [toolsMode, setToolsMode] = useState(false); const [user, setUser] = useState(null); const [authChecked, setAuthChecked] = useState(false); const [mode, setMode] = useState('local'); const [activeType, setActiveType] = useState('all'); const [view, setView] = useState('all'); const [query, setQuery] = useState(''); const [selected, setSelected] = useState(null); const [showAdd, setShowAdd] = useState(false); const [pendingMigration, setPendingMigration] = useState(null); const [migrationBusy, setMigrationBusy] = useState(false); const [toast, setToast] = useState(''); const [mobileNav, setMobileNav] = useState(false); const fileRef = useRef(null)
   useEffect(() => { apiRequest('/auth/me').then(async ({ user: currentUser }) => { setUser(currentUser); setMode('remote'); const data = await apiRequest('/assets'); setAssets(data.assets.map(fromApi)); const localAssets = readStoredLocal(); if (localAssets.length) setPendingMigration(localAssets) }).catch(() => {}).finally(() => setAuthChecked(true)) }, [])
   useEffect(() => { if (mode !== 'local') return; const hasCustomAssets = assets.some((asset) => !seedAssetIds.has(asset.id)); if (hasCustomAssets) localStorage.setItem(localKey, JSON.stringify(assets)); else localStorage.removeItem(localKey) }, [assets, mode]); useEffect(() => { if (toast) { const t = setTimeout(() => setToast(''), 2800); return () => clearTimeout(t) } }, [toast]); useEffect(() => { const handler = (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); document.querySelector('.search-box input')?.focus() } }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler) }, [])
   const filtered = useMemo(() => assets.filter((asset) => { const haystack = `${asset.title} ${asset.description} ${asset.tags.join(' ')} ${asset.sharedContent}`.toLowerCase(); return (activeType === 'all' || asset.typeKey === activeType) && (view === 'all' || (view === 'favorites' && asset.favorite) || (view === 'recent' && ['刚刚使用', '今天使用', '昨天使用'].includes(asset.used))) && (!query.trim() || haystack.includes(query.toLowerCase())) }), [assets, activeType, query, view])
@@ -56,7 +312,7 @@ function App() {
   const logout = async () => { await apiRequest('/auth/logout', { method: 'POST' }); setUser(null); setMode('local'); setAssets(readLocal()); setToast('已退出云端工作区') }
   if (!authChecked) return <div className="loading-screen"><div className="brand-mark"><Zap size={17} /></div><span>正在连接工作区…</span></div>
   const types = [['all', '全部资产', Layers3], ...Object.entries(palette).map(([key, value]) => [key, value[0], value[1]])]; const count = (key) => key === 'all' ? assets.length : assets.filter((asset) => asset.typeKey === key).length
-  return <div className="app-shell"><aside className={`sidebar ${mobileNav ? 'open' : ''}`}><div className="brand"><div className="brand-mark"><Zap size={17} /></div><span>one-for-all</span><span className="brand-dot" /></div><div className="workspace-switch"><div className="workspace-avatar">{user ? user.name.slice(0, 1).toUpperCase() : 'L'}</div><div><strong>{user ? `${user.name} 的工作区` : '本地工作区'}</strong><small>{user ? user.email : '仅当前浏览器'}</small></div><ChevronDown size={15} /></div><nav className="side-nav"><div className="nav-label">资产库</div>{types.map(([key, label, Icon]) => <button key={key} className={`nav-item ${activeType === key && view === 'all' ? 'active' : ''}`} onClick={() => { setActiveType(key); setView('all'); setMobileNav(false) }}><Icon size={17} /><span>{label}</span><em>{count(key)}</em></button>)}<div className="nav-label nav-label-space">视图</div><button className={`nav-item ${view === 'favorites' ? 'active' : ''}`} onClick={() => { setView('favorites'); setActiveType('all'); setMobileNav(false) }}><Star size={17} /><span>已收藏</span><em>{assets.filter((asset) => asset.favorite).length}</em></button><button className={`nav-item ${view === 'recent' ? 'active' : ''}`} onClick={() => { setView('recent'); setActiveType('all'); setMobileNav(false) }}><Bookmark size={17} /><span>最近使用</span></button></nav><div className="sidebar-bottom"><button className="nav-item" onClick={() => exportAssets(false)}><Download size={17} /><span>导出共享资产</span></button><button className="nav-item" onClick={() => fileRef.current?.click()}><Upload size={17} /><span>导入资产库</span></button>{user ? <button className="nav-item muted" onClick={logout}><LogOut size={17} /><span>退出登录</span></button> : <button className="nav-item muted" onClick={() => setToast('点击右上角账户按钮登录云端')}><UserRound size={17} /><span>连接云端</span></button>}</div><input ref={fileRef} type="file" accept="application/json" hidden onChange={importAssets} /></aside>{mobileNav && <button className="scrim" aria-label="关闭导航" onClick={() => setMobileNav(false)} />}<main className="main-content"><header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="打开导航"><Menu size={21} /></button><div className="breadcrumbs"><span>工作区</span><span>/</span><strong>{view === 'favorites' ? '已收藏' : view === 'recent' ? '最近使用' : (types.find((item) => item[0] === activeType)?.[1] || '全部资产')}</strong></div><div className="top-actions"><div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索资产、标签或内容…" /><kbd>⌘ K</kbd></div>{user ? <button className="account-button" onClick={logout} title="退出登录"><span>{user.name.slice(0, 1).toUpperCase()}</span><LogOut size={14} /></button> : <button className="account-button" onClick={() => setShowAdd('auth')} title="登录云端"><UserRound size={16} /><span>登录</span></button>}<button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={17} /> 新建资产</button></div></header><section className="content-wrap"><div className="page-intro"><div><p className="eyebrow">DEVELOPER KNOWLEDGE BASE <span>·</span> {user ? '云端工作区' : '本地工作区'}</p><h1>把好用的东西，留在手边。</h1><p className="intro-copy">共享模板和私人配置分开管理，按需组合，安全地复制到你的下一个项目。</p></div><button className="text-button" onClick={() => exportAssets(false)}><Download size={15} /> 备份共享资产 <ArrowUpRight size={14} /></button></div><div className="stats-row"><Stat icon={Layers3} cls="blue-bg" value={assets.length} label="全部资产" note={mode === 'remote' ? '已同步数据库' : '本地存储'} /><Stat icon={Copy} cls="amber-bg" value="24" label="本月复制" note="+18%" positive /><Stat icon={ShieldCheck} cls="green-bg" value={assets.filter((asset) => bindingCount(asset) > 0).length} label="含私密绑定" note="默认遮罩" /></div><div className="section-toolbar"><div className="tabs"><button className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>全部资产 <span>{assets.length}</span></button><button className={view === 'recent' ? 'active' : ''} onClick={() => setView('recent')}>最近使用</button><button className={view === 'favorites' ? 'active' : ''} onClick={() => setView('favorites')}>已收藏 <span>{assets.filter((asset) => asset.favorite).length}</span></button></div><div className="result-meta">{filtered.length} 个结果 <button className="sort-button">最近更新 <ChevronDown size={14} /></button></div></div>{filtered.length ? <div className="asset-grid">{filtered.map((asset) => <AssetCard key={asset.id} asset={asset} onSelect={openAsset} onCopy={copyAsset} onFavorite={toggleFavorite} />)}</div> : <Empty query={query} onClear={() => setQuery('')} onAdd={() => setShowAdd(true)} />}<footer className="page-footer"><span>{mode === 'remote' ? '云端工作区 · 数据已同步 PostgreSQL' : '本地工作区 · 数据仅保存在当前浏览器'}</span><span><i className="status-dot" /> 已自动保存</span></footer></section></main>{selected && <AssetModal asset={selected} onClose={() => setSelected(null)} onCopy={copyAsset} onFavorite={toggleFavorite} onDelete={removeAsset} onUpdatePrivate={updatePrivate} onExportPrivate={() => exportAssets(true)} />}{pendingMigration && <MigrationModal assets={pendingMigration} busy={migrationBusy} onClose={() => setPendingMigration(null)} onMigrate={migrateLocal} />}{showAdd === true && <AddModal onClose={() => setShowAdd(false)} onAdd={addAsset} />}{showAdd === 'auth' && <AuthModal onClose={() => setShowAdd(false)} onSubmit={login} />}{toast && <div className="toast"><Check size={16} /> {toast}</div>}</div>
+  return <div className="app-shell"><aside className={`sidebar ${mobileNav ? 'open' : ''}`}><div className="brand"><div className="brand-mark"><Zap size={17} /></div><span>one-for-all</span><span className="brand-dot" /></div><div className="workspace-switch"><div className="workspace-avatar">{user ? user.name.slice(0, 1).toUpperCase() : 'L'}</div><div><strong>{user ? `${user.name} 的工作区` : '本地工作区'}</strong><small>{user ? user.email : '仅当前浏览器'}</small></div><ChevronDown size={15} /></div><nav className="side-nav"><div className="nav-label">资产库</div>{types.map(([key, label, Icon]) => <button key={key} className={`nav-item ${activeType === key && view === 'all' ? 'active' : ''}`} onClick={() => { setToolsMode(false); setActiveType(key); setView('all'); setMobileNav(false) }}><Icon size={17} /><span>{label}</span><em>{count(key)}</em></button>)}<button className={`nav-item tool-nav-item ${toolsMode ? 'active' : ''}`} onClick={() => { setToolsMode('library'); setMobileNav(false) }}><Wrench size={17} /><span>工具库</span><em>02</em></button><div className="nav-label nav-label-space">视图</div><button className={`nav-item ${view === 'favorites' ? 'active' : ''}`} onClick={() => { setToolsMode(false); setView('favorites'); setActiveType('all'); setMobileNav(false) }}><Star size={17} /><span>已收藏</span><em>{assets.filter((asset) => asset.favorite).length}</em></button><button className={`nav-item ${view === 'recent' ? 'active' : ''}`} onClick={() => { setToolsMode(false); setView('recent'); setActiveType('all'); setMobileNav(false) }}><Bookmark size={17} /><span>最近使用</span></button></nav><div className="sidebar-bottom"><button className="nav-item" onClick={() => exportAssets(false)}><Download size={17} /><span>导出共享资产</span></button><button className="nav-item" onClick={() => fileRef.current?.click()}><Upload size={17} /><span>导入资产库</span></button>{user ? <button className="nav-item muted" onClick={logout}><LogOut size={17} /><span>退出登录</span></button> : <button className="nav-item muted" onClick={() => setToast('点击右上角账户按钮登录云端')}><UserRound size={17} /><span>连接云端</span></button>}</div><input ref={fileRef} type="file" accept="application/json" hidden onChange={importAssets} /></aside>{mobileNav && <button className="scrim" aria-label="关闭导航" onClick={() => setMobileNav(false)} />}<main className="main-content">{toolsMode ? <>{toolsMode === 'library' ? <ToolsShell onSelect={setToolsMode} /> : <JsonTool mode={toolsMode === 'json-diff' ? 'diff' : 'format'} onBack={() => setToolsMode('library')} />}</> : <><header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="打开导航"><Menu size={21} /></button><div className="breadcrumbs"><span>工作区</span><span>/</span><strong>{view === 'favorites' ? '已收藏' : view === 'recent' ? '最近使用' : (types.find((item) => item[0] === activeType)?.[1] || '全部资产')}</strong></div><div className="top-actions"><div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索资产、标签或内容…" /><kbd>⌘ K</kbd></div>{user ? <button className="account-button" onClick={logout} title="退出登录"><span>{user.name.slice(0, 1).toUpperCase()}</span><LogOut size={14} /></button> : <button className="account-button" onClick={() => setShowAdd('auth')} title="登录云端"><UserRound size={16} /><span>登录</span></button>}<button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={17} /> 新建资产</button></div></header><section className="content-wrap"><div className="page-intro"><div><p className="eyebrow">DEVELOPER KNOWLEDGE BASE <span>·</span> {user ? '云端工作区' : '本地工作区'}</p><h1>把好用的东西，留在手边。</h1><p className="intro-copy">共享模板和私人配置分开管理，按需组合，安全地复制到你的下一个项目。</p></div><button className="text-button" onClick={() => exportAssets(false)}><Download size={15} /> 备份共享资产 <ArrowUpRight size={14} /></button></div><div className="stats-row"><Stat icon={Layers3} cls="blue-bg" value={assets.length} label="全部资产" note={mode === 'remote' ? '已同步数据库' : '本地存储'} /><Stat icon={Copy} cls="amber-bg" value="24" label="本月复制" note="+18%" positive /><Stat icon={ShieldCheck} cls="green-bg" value={assets.filter((asset) => bindingCount(asset) > 0).length} label="含私密绑定" note="默认遮罩" /></div><div className="section-toolbar"><div className="tabs"><button className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>全部资产 <span>{assets.length}</span></button><button className={view === 'recent' ? 'active' : ''} onClick={() => setView('recent')}>最近使用</button><button className={view === 'favorites' ? 'active' : ''} onClick={() => setView('favorites')}>已收藏 <span>{assets.filter((asset) => asset.favorite).length}</span></button></div><div className="result-meta">{filtered.length} 个结果 <button className="sort-button">最近更新 <ChevronDown size={14} /></button></div></div>{filtered.length ? <div className="asset-grid">{filtered.map((asset) => <AssetCard key={asset.id} asset={asset} onSelect={openAsset} onCopy={copyAsset} onFavorite={toggleFavorite} />)}</div> : <Empty query={query} onClear={() => setQuery('')} onAdd={() => setShowAdd(true)} />}<footer className="page-footer"><span>{mode === 'remote' ? '云端工作区 · 数据已同步 PostgreSQL' : '本地工作区 · 数据仅保存在当前浏览器'}</span><span><i className="status-dot" /> 已自动保存</span></footer></section></>}</main>{selected && <AssetModal asset={selected} onClose={() => setSelected(null)} onCopy={copyAsset} onFavorite={toggleFavorite} onDelete={removeAsset} onUpdatePrivate={updatePrivate} onExportPrivate={() => exportAssets(true)} />}{pendingMigration && <MigrationModal assets={pendingMigration} busy={migrationBusy} onClose={() => setPendingMigration(null)} onMigrate={migrateLocal} />}{showAdd === true && <AddModal onClose={() => setShowAdd(false)} onAdd={addAsset} />}{showAdd === 'auth' && <AuthModal onClose={() => setShowAdd(false)} onSubmit={login} />}{toast && <div className="toast"><Check size={16} /> {toast}</div>}</div>
 }
 
 function Stat({ icon: Icon, cls, value, label, note, positive }) { return <div className="stat-card"><div className={`stat-icon ${cls}`}><Icon size={18} /></div><div><strong>{value}</strong><span>{label}</span></div><small className={positive ? 'positive' : ''}>{note}</small></div> }
