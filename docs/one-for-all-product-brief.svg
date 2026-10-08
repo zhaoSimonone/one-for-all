@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="3400" viewBox="0 0 1440 3400">
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="3830" viewBox="0 0 1440 3830">
   <defs>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#123b2b" flood-opacity="0.10"/>
@@ -21,7 +21,7 @@
     </style>
   </defs>
 
-  <rect width="1440" height="3400" fill="#f7faf6"/>
+  <rect width="1440" height="3830" fill="#f7faf6"/>
   <path d="M0 0h1440v430c-200 72-440 16-690 16S250 509 0 434V0z" fill="#eef7ef"/>
 
   <!-- header -->
@@ -29,7 +29,7 @@
     <rect x="112" y="74" width="42" height="42" rx="13" fill="#17a76e"/>
     <path d="M132 83l-9 17h8l-3 10 12-17h-8z" fill="#fff"/>
     <text x="171" y="103" class="ink" font-size="22" font-weight="800">one-for-all</text>
-    <text x="1115" y="99" class="muted" font-size="15" font-weight="700">个人开发资产库</text>
+    <text x="1115" y="99" class="muted" font-size="15" font-weight="700">研发资产沉淀</text>
     <text x="1284" y="99" class="muted" font-size="15">v0.1</text>
   </g>
 
@@ -41,7 +41,7 @@
     <text x="112" y="415" class="ink h1">值得复用的部分</text>
     <text x="112" y="493" class="green h1">留在手边。</text>
     <text x="116" y="555" class="muted body">代码、Prompt、API 接入与密钥配置统一沉淀；</text>
-    <text x="116" y="592" class="muted body">下一次开发，只需一键复制给 Codex。</text>
+    <text x="116" y="592" class="muted body">下一次开发，人、Agent、工具都能复用。</text>
 
     <g filter="url(#shadow)">
       <rect x="880" y="214" width="422" height="324" rx="28" fill="url(#heroGreen)"/>
@@ -90,13 +90,43 @@
     <text x="269" y="1234" fill="#896b31" font-size="18">把“能复用的工作成果”和“只属于你的秘密”放进同一资产，但用两层数据管理。</text>
   </g>
 
+  <!-- asset positioning and case -->
+  <g class="sans">
+    <text x="112" y="1320" class="green smallcaps">02 · WHAT IS AN ASSET</text>
+    <text x="280" y="1357" class="ink h2">资产不是收藏内容，而是可复用的研发能力。</text>
+    <text x="280" y="1401" class="muted body">能被再次发现、复制、执行或组合的成果，都应该带着上下文沉淀下来。</text>
+
+    <g filter="url(#soft)">
+      <rect x="112" y="1450" width="286" height="126" rx="15" fill="#fff" stroke="#e2ebe4"/>
+      <rect x="420" y="1450" width="286" height="126" rx="15" fill="#fff" stroke="#e2ebe4"/>
+      <rect x="728" y="1450" width="286" height="126" rx="15" fill="#fff" stroke="#e2ebe4"/>
+      <rect x="1036" y="1450" width="292" height="126" rx="15" fill="#fff" stroke="#e2ebe4"/>
+    </g>
+    <text x="138" y="1487" class="ink h3">可执行资产</text>
+    <text x="138" y="1520" class="muted small">SQL · curl · 代码片段 · 脚本</text>
+    <text x="446" y="1487" class="ink h3">工具能力</text>
+    <text x="446" y="1520" class="muted small">CLI · API · SDK · 组件</text>
+    <text x="754" y="1487" class="ink h3">认知资产</text>
+    <text x="754" y="1520" class="muted small">Prompt · 规范 · 排障经验</text>
+    <text x="1062" y="1487" class="ink h3">流程资产</text>
+    <text x="1062" y="1520" class="muted small">初始化 · 发布 · 排查 Recipe</text>
+
+    <g filter="url(#shadow)">
+      <rect x="112" y="1620" width="1216" height="126" rx="18" fill="#123f2d"/>
+    </g>
+    <text x="145" y="1657" fill="#b6e4c7" font-size="15" font-weight="700">CASE · 线上接口异常排查</text>
+    <text x="145" y="1692" fill="#fff" font-size="17">搜索“接口 500” → 推荐监控查询 CLI + 日志 SQL + 最近发布记录 → 生成修复与健康检查步骤</text>
+    <text x="145" y="1721" fill="#bce6ca" font-size="15">一次沉淀，复用整条排查路径；每个步骤保留负责人、权限、验证和回滚信息。</text>
+  </g>
+
+  <g transform="translate(0 430)">
   <line x1="112" y1="1351" x2="1328" y2="1351" class="line"/>
 
   <!-- how -->
   <g class="sans">
-    <text x="112" y="1437" class="green smallcaps">02 · HOW IT WORKS</text>
-    <text x="280" y="1474" class="ink h2">一份资产，两层内容；需要时再组合。</text>
-    <text x="280" y="1524" class="muted body">完整粘贴也没关系，One for All 自动识别敏感值，帮你把可分享和不可分享的部分分开。</text>
+    <text x="112" y="1437" class="green smallcaps">03 · HOW IT WORKS</text>
+    <text x="280" y="1474" class="ink h2">从搜索到执行，不止复制给 Codex。</text>
+    <text x="280" y="1524" class="muted body">完整粘贴也没关系，One for All 自动拆分共享模板与私密配置，再按接入方式安全复用。</text>
 
     <g>
       <rect x="112" y="1610" width="440" height="82" rx="15" fill="#fff" stroke="#e1ebe4"/>
@@ -118,7 +148,7 @@
 
     <g filter="url(#shadow)">
       <rect x="625" y="1601" width="703" height="530" rx="28" fill="#162520"/>
-      <text x="671" y="1664" fill="#b9d9c7" font-size="16">资产详情 · 账号隔离</text>
+      <text x="671" y="1664" fill="#b9d9c7" font-size="16">资产详情 · 账号隔离 · Agent 接入</text>
       <text x="671" y="1713" fill="#fff" font-size="31" font-weight="800">OpenRouter API 接入</text>
       <rect x="671" y="1750" width="611" height="182" rx="16" fill="#203b31"/>
       <text x="699" y="1791" fill="#a3d9ba" font-size="14">共享模板 · 可安全分享</text>
@@ -135,15 +165,15 @@
   <g class="sans">
     <rect x="112" y="2173" width="1216" height="76" rx="12" fill="#e8f3ff"/>
     <rect x="112" y="2173" width="5" height="76" rx="2" fill="#5e9bea"/>
-    <text x="143" y="2219" fill="#41658d" font-size="18" font-weight="700">默认路径：</text>
-    <text x="268" y="2219" fill="#41658d" font-size="18">复制共享模板，不带真实值；只有点击“复制含私密配置”并确认后，才进入剪贴板。</text>
+    <text x="143" y="2219" fill="#41658d" font-size="18" font-weight="700">目标复用路径：</text>
+    <text x="300" y="2219" fill="#41658d" font-size="18">复制给 Codex · 通过 Skill 注入 Agent · 经 API 网关路由调用（统一鉴权、审计、限流）。</text>
   </g>
 
   <line x1="112" y1="2308" x2="1328" y2="2308" class="line"/>
 
   <!-- security -->
   <g class="sans">
-    <text x="112" y="2394" class="green smallcaps">03 · SECURITY BY DEFAULT</text>
+    <text x="112" y="2394" class="green smallcaps">04 · SECURITY BY DEFAULT</text>
     <text x="280" y="2431" class="ink h2">共享得出去，密钥留得住。</text>
     <text x="280" y="2481" class="muted body">安全不是额外的流程，而是资产模型本身的一部分。</text>
     <g filter="url(#soft)">
@@ -170,7 +200,7 @@
 
   <!-- MVP / next -->
   <g class="sans">
-    <text x="112" y="3086" class="green smallcaps">04 · MVP → NEXT</text>
+    <text x="112" y="3086" class="green smallcaps">05 · MVP → NEXT</text>
     <text x="280" y="3123" class="ink h2">先把个人开发者的高频复用，做成一个闭环。</text>
     <g filter="url(#soft)">
       <rect x="112" y="3185" width="585" height="155" rx="20" fill="#123f2d"/>
@@ -179,12 +209,13 @@
     <text x="145" y="3235" fill="#fff" font-size="28" font-weight="800">V0.1 · 可用的资产闭环</text>
     <text x="145" y="3273" fill="#bce6ca" font-size="16">分类 · 标签 · 搜索 · 收藏 · 云端同步 · 私密绑定 · Codex 复制</text>
     <text x="760" y="3235" class="ink" font-size="24" font-weight="800">下一步：从个人资产库走向团队工作台</text>
-    <text x="760" y="3273" class="muted" font-size="16">Workspace 权限 · 公开/私有可见性 · Secret Manager · CLI / Skill</text>
+    <text x="760" y="3273" class="muted" font-size="16">Workspace 权限 · 公开/私有可见性 · Secret Manager · CLI / Skill · API 网关</text>
   </g>
 
   <rect x="112" y="3365" width="1216" height="2" fill="#dce8e0"/>
   <g class="sans">
     <text x="112" y="3393" class="muted tiny">one-for-all · 把好用的东西，留在手边。</text>
     <text x="1110" y="3393" class="muted tiny">tools.chatcanvas.online</text>
+  </g>
   </g>
 </svg>
