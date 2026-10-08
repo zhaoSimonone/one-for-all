@@ -79,3 +79,6 @@
 .md-body hr{border:0;border-top:1px solid #e8ecf2;margin:14px 0}
 .md-body strong{font-weight:700;color:#1b2432}
 .md-body em{color:#5b6a85}
+.code-panel.md-doc .code-panel-bar button{color:#5b6a85}
+.code-panel.md-doc .code-panel-bar button:hover{color:#263449}
+.code-panel.md-doc .code-panel-bar button.copied{color:#2a9c75}
