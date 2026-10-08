@@ -23,7 +23,7 @@ Use this skill when the user asks to save, catalog, or upload reusable developme
    - Preserve existing `${NAME}` and `{{NAME}}` placeholders and never classify examples such as `sk-…`, `your-key`, or `placeholder` as real secrets.
 4. Choose a descriptive environment variable. Prefer an existing key name; for GPT Image input use `GPT_IMAGE_API_KEY`, otherwise use a specific uppercase name such as `OPENROUTER_API_KEY` or `API_BEARER_TOKEN`.
 5. Upload the result with the bundled script. The script repeats sensitive-value detection as a final guard and sends `sharedContent` plus `privateBindings` to the owner-scoped One for All API.
-6. After success, report only the title, type, tags, asset ID, and number of private bindings. Never print private values, the full request body, cookies, passwords, or bearer tokens.
+6. After success, report only the title, type, tags, asset ID, the number of private bindings, and whether the run created a new asset or updated an existing one. Never print private values, the full request body, cookies, passwords, or bearer tokens.
 
 ## Upload procedure
 
@@ -38,6 +38,14 @@ node /path/to/one-for-all/skills/one-for-all-asset/scripts/publish_asset.mjs \
 The input file should be temporary and mode `600` when it contains secrets; remove it immediately after the command completes. Do not put the raw secret in command-line arguments, shell history, logs, or a committed file. If the user already supplied a local file, pass it directly as `INPUT_FILE`.
 
 For a non-mutating check, add `--dry-run`; it prints inferred metadata and private variable names only. Normal execution is an upload and is authorized by this skill's purpose.
+
+## Create vs. update
+
+The bundled script always creates a new asset (`POST /assets`). Before uploading, decide whether the material instead supersedes an asset the user already stored:
+
+- **Update in place** when the pasted material is a revision of an existing asset: same task and subject, and the new body is a superset or correction of the old one — for example a completed version of a previously truncated text, added constraints, or added deliverables. Update via `PUT /assets/:id` with the same authentication as the script (omitted fields keep their stored values; omitting `privateBindings` keeps existing bindings, so an update never needs the secret values again). Prefer updating when the stored version is strictly incomplete, for instance auto-completed by the assistant from a truncated paste.
+- **Create new** when the task or subject differs from every stored asset, or when the user explicitly wants several variants of the same prompt kept side by side (e.g. a simple daily version and a strict delivery version).
+- If the match is uncertain, create a new asset and say so in the report; never overwrite an asset the user did not clearly re-supply in the current session.
 
 ## Authentication
 
