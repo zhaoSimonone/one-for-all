@@ -20,7 +20,7 @@ function cloneAsset(asset) {
 
 pool.query = async (query, params = []) => {
   if (query.includes('INSERT INTO audit_logs')) {
-    auditLogs.push({ actor_user_id: params[0], action: params[1], asset_id: params[2], metadata: JSON.parse(params[4]) });
+    auditLogs.push({ actor_user_id: params[0], action: params[1], asset_id: params[2], metadata: JSON.parse(params[4]), created_at: new Date() });
     return { rowCount: 1, rows: [] };
   }
   if (query.includes('SELECT id, email, name, avatar_url FROM users WHERE id')) {
@@ -45,7 +45,7 @@ pool.query = async (query, params = []) => {
     const asset = {
       id: crypto.randomUUID(), user_id: params[0], title: params[1], type_key: params[2],
       description: params[3], tags: JSON.parse(params[4]), shared_content: params[5],
-      private_bindings: params[6], favorite: params[7], used_at: new Date(),
+      private_bindings: params[6], favorite: params[7], use_count: 0, used_at: new Date(),
       created_at: new Date(), updated_at: new Date(),
     };
     assets.push(asset);
@@ -58,6 +58,21 @@ pool.query = async (query, params = []) => {
   if (query.includes('SELECT * FROM assets WHERE id = $1 AND user_id = $2')) {
     const asset = assets.find((item) => item.id === params[0] && item.user_id === params[1]);
     return { rowCount: asset ? 1 : 0, rows: asset ? [cloneAsset(asset)] : [] };
+  }
+  if (query.includes('UPDATE assets SET used_at=now()')) {
+    const asset = assets.find((item) => item.id === params[0] && item.user_id === params[1]);
+    if (!asset) return { rowCount: 0, rows: [] };
+    asset.use_count = (asset.use_count || 0) + 1;
+    asset.used_at = new Date();
+    asset.updated_at = new Date();
+    return { rowCount: 1, rows: [cloneAsset(asset)] };
+  }
+  if (query.includes('SELECT count(*)::int AS copies FROM audit_logs')) {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const copies = auditLogs.filter((entry) => entry.actor_user_id === params[0] && entry.action === 'asset.use' && new Date(entry.created_at) >= monthStart).length;
+    return { rowCount: 1, rows: [{ copies }] };
   }
   if (query.includes('UPDATE assets SET title=')) {
     const asset = assets.find((item) => item.id === params[7] && item.user_id === params[8]);
@@ -186,4 +201,28 @@ test('authentication endpoints are rate limited per source', async () => {
   });
   assert.equal(limited.response.status, 429);
   assert.ok(Number(limited.response.headers.get('retry-after')) > 0);
+});
+
+test('copy events track per-asset heat and monthly copies', async () => {
+  const registered = await request('/api/v1/auth/register', {
+    method: 'POST', body: { email: 'heat@example.com', name: 'Heat', password: 'correct horse battery staple' },
+  });
+  const created = await request('/api/v1/assets', {
+    method: 'POST', cookie: registered.cookie,
+    body: { title: 'Hot asset', typeKey: 'snippet', sharedContent: 'x' },
+  });
+  const assetId = created.body.asset.id;
+  assert.equal(created.body.asset.useCount, 0);
+  const first = await request(`/api/v1/assets/${assetId}/use`, { method: 'POST', cookie: registered.cookie });
+  const second = await request(`/api/v1/assets/${assetId}/use`, { method: 'POST', cookie: registered.cookie });
+  assert.equal(first.response.status, 200);
+  assert.equal(second.body.asset.useCount, 2);
+  const stats = await request('/api/v1/stats/copies', { cookie: registered.cookie });
+  assert.equal(stats.response.status, 200);
+  assert.ok(stats.body.copies >= 2);
+  const other = await request('/api/v1/auth/register', {
+    method: 'POST', body: { email: 'cold@example.com', name: 'Cold', password: 'correct horse battery staple' },
+  });
+  const otherStats = await request('/api/v1/stats/copies', { cookie: other.cookie });
+  assert.equal(otherStats.body.copies, 0);
 });

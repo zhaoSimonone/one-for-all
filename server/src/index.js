@@ -125,6 +125,7 @@ function assetResponse(row) {
     id: row.id, title: row.title, typeKey: row.type_key, description: row.description,
     tags: Array.isArray(row.tags) ? row.tags : [], sharedContent: row.shared_content,
     privateBindingMeta: bindingMeta, favorite: row.favorite, usedAt: row.used_at,
+    useCount: row.use_count || 0,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
@@ -234,7 +235,7 @@ app.get('/api/v1/assets', authenticate, async (req, res, next) => {
     if (req.query.recent === 'true') where.push(`used_at >= now() - interval '30 days'`);
     if (req.query.q) { values.push(`%${String(req.query.q).slice(0, 200)}%`); const index = values.length; where.push(`(title ILIKE $${index} OR description ILIKE $${index} OR shared_content ILIKE $${index} OR tags::text ILIKE $${index})`); }
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100); const offset = Math.max(Number(req.query.offset) || 0, 0); values.push(limit, offset);
-    const result = await pool.query(`SELECT id, title, type_key, description, tags, shared_content, private_bindings, favorite, used_at, created_at, updated_at FROM assets WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
+    const result = await pool.query(`SELECT id, title, type_key, description, tags, shared_content, private_bindings, favorite, used_at, use_count, created_at, updated_at FROM assets WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
     await recordAudit({ req, userId: req.user.id, action: 'asset.list', metadata: { count: result.rowCount } });
     res.json({ assets: result.rows.map(assetResponse), pagination: { limit, offset, count: result.rowCount } });
   } catch (error) { next(error); }
@@ -297,7 +298,12 @@ app.put('/api/v1/assets/:id', authenticate, async (req, res, next) => {
 });
 
 app.post('/api/v1/assets/:id/use', authenticate, async (req, res, next) => {
-  try { const result = await pool.query('UPDATE assets SET used_at=now(), updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *', [req.params.id, req.user.id]); if (!result.rowCount) return res.status(404).json({ error: 'NOT_FOUND', message: '资产不存在' }); await recordAudit({ req, userId: req.user.id, action: 'asset.use', assetId: req.params.id }); res.json({ asset: assetResponse(result.rows[0]) }); }
+  try { const result = await pool.query('UPDATE assets SET used_at=now(), updated_at=now(), use_count=COALESCE(use_count,0)+1 WHERE id=$1 AND user_id=$2 RETURNING *', [req.params.id, req.user.id]); if (!result.rowCount) return res.status(404).json({ error: 'NOT_FOUND', message: '资产不存在' }); await recordAudit({ req, userId: req.user.id, action: 'asset.use', assetId: req.params.id }); res.json({ asset: assetResponse(result.rows[0]) }); }
+  catch (error) { next(error); }
+});
+
+app.get('/api/v1/stats/copies', authenticate, async (req, res, next) => {
+  try { const result = await pool.query("SELECT count(*)::int AS copies FROM audit_logs WHERE actor_user_id=$1 AND action='asset.use' AND created_at >= date_trunc('month', now())", [req.user.id]); res.json({ copies: result.rows[0].copies }); }
   catch (error) { next(error); }
 });
 

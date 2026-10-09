@@ -23,10 +23,14 @@ CREATE TABLE IF NOT EXISTS assets (
   -- AES-256-GCM ciphertext. Never store private values as plaintext JSON.
   private_bindings TEXT NOT NULL DEFAULT '',
   favorite BOOLEAN NOT NULL DEFAULT false,
+  use_count INTEGER NOT NULL DEFAULT 0,
   used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Existing deployments: add the copy counter column if it is missing.
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS use_count INTEGER NOT NULL DEFAULT 0;
 
 -- Security-relevant events. Metadata must never contain secret values.
 CREATE TABLE IF NOT EXISTS audit_logs (

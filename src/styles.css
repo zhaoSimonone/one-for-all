@@ -101,3 +101,5 @@
 .md-body del{color:#8b98ad}
 .md-body input[type=checkbox]{accent-color:#4dd09b;margin-right:6px}
 @media(max-width:1050px){.md-grid{grid-template-columns:1fr}.md-grid .json-editor-panel,.md-preview-panel{height:480px}}
+.md-body a{text-decoration:underline;text-underline-offset:2px}.code-panel pre a{color:#8fb7ff;text-decoration:underline;text-underline-offset:2px;cursor:pointer}.code-panel pre a:hover{color:#bcd3ff}
+.heat-badge{margin-left:auto;display:inline-flex;align-items:center;gap:3px;color:#c2410c;background:#fff1e7;border-radius:4px;padding:3px 6px;font-size:9px;font-weight:600}
