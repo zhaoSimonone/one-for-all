@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises'
 import process from 'node:process'
 
-const VALID_TYPES = new Set(['credentials', 'infra', 'prompt', 'snippet', 'database', 'component'])
+const VALID_TYPES = new Set(['credentials', 'infra', 'prompt', 'snippet', 'database', 'component', 'website'])
 const TYPE_LABELS = {
   credentials: '凭证',
   infra: '基础设施',
@@ -11,6 +11,7 @@ const TYPE_LABELS = {
   snippet: '代码片段',
   database: '数据库',
   component: '组件',
+  website: '网站收藏',
 }
 
 function parseArgs(argv) {
@@ -107,6 +108,7 @@ function splitSensitiveContent(input, title = '') {
 
 function inferType(title, content) {
   const text = `${title}\n${content}`.toLowerCase()
+  if (/^https?:\/\/[^\s]+$/i.test(String(content).trim()) || (/网站|网址|收藏/.test(text) && /https?:\/\//i.test(text))) return 'website'
   if (looksLikeStandaloneSecret(String(content).trim())) return 'credentials'
   if (/prompt|提示词|system message|你是一个/.test(text)) return 'prompt'
   if (/[\u3400-\u9fff]/.test(text) && !/```|curl\s+-x|authorization\s*:|\b(from|import|const|function)\b/.test(text) && text.length > 20) return 'prompt'
@@ -117,10 +119,14 @@ function inferType(title, content) {
   return 'snippet'
 }
 
+function firstUrl(content) { return String(content || '').match(/https?:\/\/[^\s<>'"）】]+/i)?.[0]?.replace(/[.,;!?）】]+$/, '') || '' }
+function websiteUrl(content, requested) { return String(requested || '').trim() || firstUrl(content) }
+
 function inferTitle(content, requested) {
   if (requested?.trim()) return requested.trim().slice(0, 200)
   const heading = String(content).match(/^\s*#\s+(.+)$/m)?.[1]?.trim()
   if (heading) return heading.slice(0, 200)
+  if (firstUrl(content) && /^https?:\/\/[^\s]+$/i.test(String(content).trim())) return new URL(firstUrl(content)).hostname.replace(/^www\./, '')
   if (/gpt[-_ ]?image/i.test(content)) return 'GPT Image API 调用'
   if (/openrouter/i.test(content)) return 'OpenRouter API 接入'
   if (/腾讯云|\bcos\b/i.test(content)) return '腾讯云 COS 接入'
@@ -130,6 +136,7 @@ function inferTitle(content, requested) {
 function inferTags(title, content, requested) {
   const tags = String(requested || '').split(/[,，]/).map((tag) => tag.trim()).filter(Boolean)
   const candidates = [
+    [/https?:\/\//i, '网站'],
     [/openrouter/i, 'OpenRouter'], [/gpt[-_ ]?image/i, 'GPT Image'], [/curl/i, 'curl'], [/api|接口/i, 'API'],
     [/node|npm|javascript|typescript/i, 'Node.js'], [/react/i, 'React'], [/vue/i, 'Vue'], [/cos|腾讯云/i, '腾讯云 COS'],
     [/docker/i, 'Docker'], [/postgres|mysql|sql|prisma/i, '数据库'], [/prompt|提示词/i, 'Prompt'],
@@ -142,6 +149,7 @@ function inferTags(title, content, requested) {
 
 function inferDescription(title, content, requested, type) {
   if (requested?.trim()) return requested.trim().slice(0, 1000)
+  if (type === 'website') return `网站收藏：${firstUrl(content) || title}`.slice(0, 1000)
   const firstMeaningful = String(content).split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith('#') && !line.startsWith('```'))
   return (firstMeaningful ? `${TYPE_LABELS[type]}：${firstMeaningful.replace(/\s+/g, ' ').slice(0, 180)}` : `${title || TYPE_LABELS[type]} 的可复用开发资产`).slice(0, 1000)
 }
@@ -177,15 +185,17 @@ async function authenticate() {
   return { Cookie: cookie }
 }
 
-function safeSummary(asset, bindings) {
+function safeSummary(asset, bindings, action) {
+  const privateBindingNames = Object.keys(bindings).length ? Object.keys(bindings) : Object.keys(asset.privateBindingMeta || {})
   return JSON.stringify({
     saved: true,
+    action,
     id: asset.id,
     title: asset.title,
     typeKey: asset.typeKey,
     tags: asset.tags,
-    privateBindingCount: Object.keys(bindings).length,
-    privateBindingNames: Object.keys(bindings),
+    privateBindingCount: privateBindingNames.length,
+    privateBindingNames,
   }, null, 2)
 }
 
@@ -196,18 +206,31 @@ async function main() {
   if (!raw.trim()) throw new Error('请通过 stdin 提供资产内容')
   const title = inferTitle(raw, args.title)
   const typeKey = VALID_TYPES.has(args.type) ? args.type : inferType(title, raw)
+  const url = typeKey === 'website' ? websiteUrl(raw, args.url) : ''
+  if (typeKey === 'website' && !url) throw new Error('网站收藏需要提供 URL')
+  const folder = String(args.folder || '').trim().slice(0, 60)
   const split = splitSensitiveContent(raw, title)
   const description = inferDescription(title, split.sharedContent, args.description, typeKey)
   const tags = inferTags(title, split.sharedContent, args.tags)
   if (!split.sharedContent.trim()) split.sharedContent = `# ${title}`
   if (args.dryRun) {
-    process.stdout.write(JSON.stringify({ dryRun: true, title, typeKey, description, tags, privateBindingCount: Object.keys(split.privateBindings).length, privateBindingNames: Object.keys(split.privateBindings) }, null, 2) + '\n')
+    process.stdout.write(JSON.stringify({ dryRun: true, title, typeKey, description, tags, privateBindingCount: Object.keys(split.privateBindings).length, privateBindingNames: Object.keys(split.privateBindings), ...(typeKey === 'website' ? { url, folder } : {}) }, null, 2) + '\n')
     return
   }
   const headers = await authenticate()
-  const { body } = await request('/assets', { method: 'POST', headers, body: JSON.stringify({ title, typeKey, description, tags, sharedContent: split.sharedContent, privateBindings: split.privateBindings, favorite: false }) })
+  const assetId = args['asset-id']?.trim()
+  const clearPrivate = Boolean(args['clear-private'])
+  const payload = { title, typeKey, description, tags, sharedContent: typeKey === 'website' ? (split.sharedContent.trim() || url) : split.sharedContent }
+  if (typeKey === 'website') { payload.url = url; payload.folder = folder }
+  if (!assetId || Object.keys(split.privateBindings).length || clearPrivate) payload.privateBindings = clearPrivate ? {} : split.privateBindings
+  if (!assetId) payload.favorite = false
+  const { body } = await request(assetId ? `/assets/${assetId}` : '/assets', {
+    method: assetId ? 'PUT' : 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
   if (!body?.asset) throw new Error('One for All 未返回已保存资产')
-  process.stdout.write(safeSummary(body.asset, split.privateBindings) + '\n')
+  process.stdout.write(safeSummary(body.asset, split.privateBindings, assetId ? 'updated' : 'created') + '\n')
 }
 
 main().catch((error) => {

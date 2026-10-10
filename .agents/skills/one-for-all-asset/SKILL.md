@@ -12,7 +12,7 @@ Use this skill when the user asks to save, catalog, or upload reusable developme
 1. Treat the user's pasted material as the asset body. Do not ask the user to split shared and private sections manually.
 2. Infer the following fields from the content and the surrounding request:
    - `title`: concise, useful name in the user's language.
-   - `typeKey`: exactly one of `credentials`, `infra`, `prompt`, `snippet`, `database`, `component`.
+   - `typeKey`: exactly one of `credentials`, `infra`, `prompt`, `snippet`, `database`, `component`, `website`.
    - `description`: one sentence describing the reusable purpose.
    - `tags`: 2-8 useful tags, without secrets or secret values.
 3. Split sensitive values before upload. Replace detected values in `sharedContent` with `${ENV_NAME}` and put the original values in `privateBindings`:
@@ -35,13 +35,15 @@ node /path/to/one-for-all/skills/one-for-all-asset/scripts/publish_asset.mjs \
   < "$INPUT_FILE"
 ```
 
+For website assets, pass `--type website --url "$URL" --folder "$FOLDER"` (the URL can also be inferred from a standalone URL body).
+
 The input file should be temporary and mode `600` when it contains secrets; remove it immediately after the command completes. Do not put the raw secret in command-line arguments, shell history, logs, or a committed file. If the user already supplied a local file, pass it directly as `INPUT_FILE`.
 
 For a non-mutating check, add `--dry-run`; it prints inferred metadata and private variable names only. Normal execution is an upload and is authorized by this skill's purpose.
 
 ## Create vs. update
 
-The bundled script always creates a new asset (`POST /assets`). Before uploading, decide whether the material instead supersedes an asset the user already stored:
+The bundled script creates a new asset by default (`POST /assets`). When the user clearly identifies an existing asset to revise, pass `--asset-id <UUID>` so the script updates that asset with `PUT /assets/:id`. If no new private values are detected during an update, the script omits `privateBindings` and preserves the existing private bindings. Pass `--clear-private` only when the user explicitly asks to remove them. Before uploading, decide whether the material instead supersedes an asset the user already stored:
 
 - **Update in place** when the pasted material is a revision of an existing asset: same task and subject, and the new body is a superset or correction of the old one — for example a completed version of a previously truncated text, added constraints, or added deliverables. Update via `PUT /assets/:id` with the same authentication as the script (omitted fields keep their stored values; omitting `privateBindings` keeps existing bindings, so an update never needs the secret values again). Prefer updating when the stored version is strictly incomplete, for instance auto-completed by the assistant from a truncated paste.
 - **Create new** when the task or subject differs from every stored asset, or when the user explicitly wants several variants of the same prompt kept side by side (e.g. a simple daily version and a strict delivery version).

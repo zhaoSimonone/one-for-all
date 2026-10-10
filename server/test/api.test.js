@@ -45,11 +45,19 @@ pool.query = async (query, params = []) => {
     const asset = {
       id: crypto.randomUUID(), user_id: params[0], title: params[1], type_key: params[2],
       description: params[3], tags: JSON.parse(params[4]), shared_content: params[5],
-      private_bindings: params[6], favorite: params[7], use_count: 0, used_at: new Date(),
+      private_bindings: params[6], favorite: params[7], use_count: 0, used_at: null,
+      url: params[8] || '', folder: params[9] || '',
       created_at: new Date(), updated_at: new Date(),
     };
     assets.push(asset);
     return { rowCount: 1, rows: [cloneAsset(asset)] };
+  }
+  if (query.includes('SELECT id, title, type_key, description, tags, shared_content, private_bindings, favorite, used_at, use_count, created_at, updated_at, url, folder FROM assets')) {
+    const userId = params[0];
+    const recentOnly = query.includes('use_count > 0');
+    const folderFilter = query.includes('folder = $2') ? params[1] : '';
+    const listed = assets.filter((asset) => asset.user_id === userId && (!recentOnly || asset.use_count > 0) && (!folderFilter || asset.folder === folderFilter));
+    return { rowCount: listed.length, rows: listed.map(cloneAsset) };
   }
   if (query.includes('SELECT id, private_bindings FROM assets')) {
     const asset = assets.find((item) => item.id === params[0] && item.user_id === params[1]);
@@ -64,7 +72,6 @@ pool.query = async (query, params = []) => {
     if (!asset) return { rowCount: 0, rows: [] };
     asset.use_count = (asset.use_count || 0) + 1;
     asset.used_at = new Date();
-    asset.updated_at = new Date();
     return { rowCount: 1, rows: [cloneAsset(asset)] };
   }
   if (query.includes('SELECT count(*)::int AS copies FROM audit_logs')) {
@@ -75,11 +82,12 @@ pool.query = async (query, params = []) => {
     return { rowCount: 1, rows: [{ copies }] };
   }
   if (query.includes('UPDATE assets SET title=')) {
-    const asset = assets.find((item) => item.id === params[7] && item.user_id === params[8]);
+    const asset = assets.find((item) => item.id === params[9] && item.user_id === params[10]);
     if (!asset) return { rowCount: 0, rows: [] };
     Object.assign(asset, {
       title: params[0], type_key: params[1], description: params[2], tags: JSON.parse(params[3]),
-      shared_content: params[4], private_bindings: params[5], favorite: params[6], updated_at: new Date(),
+      shared_content: params[4], private_bindings: params[5], favorite: params[6],
+      url: params[7] || '', folder: params[8] || '', updated_at: new Date(),
     });
     return { rowCount: 1, rows: [cloneAsset(asset)] };
   }
@@ -157,6 +165,9 @@ test('authentication, asset ownership, and private response boundaries', async (
   assert.ok(auditLogs.some((entry) => entry.action === 'asset.create' && entry.asset_id === created.body.asset.id));
 
   const assetId = created.body.asset.id;
+  const recentBeforeUse = await request('/api/v1/assets?recent=true', { cookie: ownerCookie });
+  assert.equal(recentBeforeUse.response.status, 200);
+  assert.equal(recentBeforeUse.body.assets.length, 0);
   const invalidBindings = await request('/api/v1/assets', {
     method: 'POST', cookie: ownerCookie,
     body: { title: 'Invalid', typeKey: 'snippet', sharedContent: 'x', privateBindings: { lowercase_key: 'not accepted' } },
@@ -213,10 +224,17 @@ test('copy events track per-asset heat and monthly copies', async () => {
   });
   const assetId = created.body.asset.id;
   assert.equal(created.body.asset.useCount, 0);
+  assert.equal(created.body.asset.usedAt, null);
+  const beforeUseUpdatedAt = assets.find((asset) => asset.id === assetId).updated_at;
   const first = await request(`/api/v1/assets/${assetId}/use`, { method: 'POST', cookie: registered.cookie });
   const second = await request(`/api/v1/assets/${assetId}/use`, { method: 'POST', cookie: registered.cookie });
   assert.equal(first.response.status, 200);
   assert.equal(second.body.asset.useCount, 2);
+  assert.ok(second.body.asset.usedAt);
+  assert.equal(assets.find((asset) => asset.id === assetId).updated_at, beforeUseUpdatedAt);
+  const recentAfterUse = await request('/api/v1/assets?recent=true', { cookie: registered.cookie });
+  assert.equal(recentAfterUse.response.status, 200);
+  assert.equal(recentAfterUse.body.assets.length, 1);
   const stats = await request('/api/v1/stats/copies', { cookie: registered.cookie });
   assert.equal(stats.response.status, 200);
   assert.ok(stats.body.copies >= 2);

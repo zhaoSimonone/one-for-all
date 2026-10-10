@@ -15,7 +15,7 @@ The default API base is `https://tools.chatcanvas.online/api/v1`.
 ```json
 {
   "title": "string",
-  "typeKey": "credentials | infra | prompt | snippet | database | component",
+  "typeKey": "credentials | infra | prompt | snippet | database | component | website",
   "description": "string",
   "tags": ["string"],
   "sharedContent": "string",

@@ -123,6 +123,7 @@ function assetResponse(row) {
   }
   return {
     id: row.id, title: row.title, typeKey: row.type_key, description: row.description,
+    url: row.url || '', folder: row.folder || '',
     tags: Array.isArray(row.tags) ? row.tags : [], sharedContent: row.shared_content,
     privateBindingMeta: bindingMeta, favorite: row.favorite, usedAt: row.used_at,
     useCount: row.use_count || 0,
@@ -152,7 +153,16 @@ async function authenticate(req, res, next) {
 
 function validateEmail(email) { return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254; }
 function validatePassword(password) { return typeof password === 'string' && password.length >= 10 && password.length <= 128; }
-function validateType(typeKey) { return ['credentials', 'infra', 'prompt', 'snippet', 'database', 'component'].includes(typeKey); }
+function validateType(typeKey) { return ['credentials', 'infra', 'prompt', 'snippet', 'database', 'component', 'website'].includes(typeKey); }
+// Bookmarked websites are stored as normal assets; only the target url and folder are extra.
+function normalizeUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  if (!/^https?:\/\/[^\s]+$/i.test(withScheme) || withScheme.length > 2000) return null;
+  return withScheme;
+}
+function normalizeFolder(value) { return String(value || '').trim().slice(0, 60); }
 function validateUuid(value) { return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 function badRequest(res, message) { return res.status(400).json({ error: 'BAD_REQUEST', message }); }
 
@@ -232,10 +242,11 @@ app.get('/api/v1/assets', authenticate, async (req, res, next) => {
     const values = [req.user.id]; const where = ['user_id = $1'];
     if (req.query.type) { if (!validateType(req.query.type)) return badRequest(res, '无效的资产类型'); values.push(req.query.type); where.push(`type_key = $${values.length}`); }
     if (req.query.favorite === 'true') where.push('favorite = true');
-    if (req.query.recent === 'true') where.push(`used_at >= now() - interval '30 days'`);
-    if (req.query.q) { values.push(`%${String(req.query.q).slice(0, 200)}%`); const index = values.length; where.push(`(title ILIKE $${index} OR description ILIKE $${index} OR shared_content ILIKE $${index} OR tags::text ILIKE $${index})`); }
+    if (req.query.folder) { values.push(normalizeFolder(req.query.folder)); where.push(`folder = $${values.length}`); }
+    if (req.query.recent === 'true') where.push(`use_count > 0 AND used_at >= now() - interval '30 days'`);
+    if (req.query.q) { values.push(`%${String(req.query.q).slice(0, 200)}%`); const index = values.length; where.push(`(title ILIKE $${index} OR description ILIKE $${index} OR shared_content ILIKE $${index} OR tags::text ILIKE $${index} OR url ILIKE $${index} OR folder ILIKE $${index})`); }
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100); const offset = Math.max(Number(req.query.offset) || 0, 0); values.push(limit, offset);
-    const result = await pool.query(`SELECT id, title, type_key, description, tags, shared_content, private_bindings, favorite, used_at, use_count, created_at, updated_at FROM assets WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
+    const result = await pool.query(`SELECT id, title, type_key, description, tags, shared_content, private_bindings, favorite, used_at, use_count, created_at, updated_at, url, folder FROM assets WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
     await recordAudit({ req, userId: req.user.id, action: 'asset.list', metadata: { count: result.rowCount } });
     res.json({ assets: result.rows.map(assetResponse), pagination: { limit, offset, count: result.rowCount } });
   } catch (error) { next(error); }
@@ -245,10 +256,14 @@ app.post('/api/v1/assets', authenticate, async (req, res, next) => {
   try {
     const body = req.body || {}; const title = String(body.title || '').trim(); const typeKey = body.typeKey; const sharedContent = String(body.sharedContent || '');
     if (!title || title.length > 200 || !validateType(typeKey) || sharedContent.length > 200000) return badRequest(res, '资产名称、类型或共享模板无效');
+    const url = normalizeUrl(body.url);
+    if (url === null) return badRequest(res, '网址无效');
+    if (typeKey === 'website' && !url) return badRequest(res, '网站收藏需要填写网址');
+    const folder = normalizeFolder(body.folder);
     const tags = Array.isArray(body.tags) ? body.tags.filter((tag) => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean).slice(0, 30) : [];
     const privateBindings = parseBindings(body.privateBindings);
     if (privateBindings === null) return badRequest(res, '私密配置格式无效或超过大小限制');
-    const result = await pool.query('INSERT INTO assets (user_id, title, type_key, description, tags, shared_content, private_bindings, favorite) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) RETURNING *', [req.user.id, title, typeKey, String(body.description || '').slice(0, 1000), JSON.stringify(tags), sharedContent, encryptJson(privateBindings), Boolean(body.favorite)]);
+    const result = await pool.query('INSERT INTO assets (user_id, title, type_key, description, tags, shared_content, private_bindings, favorite, url, folder) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10) RETURNING *', [req.user.id, title, typeKey, String(body.description || '').slice(0, 1000), JSON.stringify(tags), sharedContent, encryptJson(privateBindings), Boolean(body.favorite), url, folder]);
     await recordAudit({ req, userId: req.user.id, action: 'asset.create', assetId: result.rows[0].id, metadata: { typeKey } });
     res.status(201).json({ asset: assetResponse(result.rows[0]) });
   } catch (error) { next(error); }
@@ -287,18 +302,23 @@ app.put('/api/v1/assets/:id', authenticate, async (req, res, next) => {
     const current = await pool.query('SELECT * FROM assets WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]); if (!current.rowCount) return res.status(404).json({ error: 'NOT_FOUND', message: '资产不存在' });
     const existing = current.rows[0]; const body = req.body || {}; const title = body.title === undefined ? existing.title : String(body.title).trim(); const typeKey = body.typeKey === undefined ? existing.type_key : body.typeKey; const sharedContent = body.sharedContent === undefined ? existing.shared_content : String(body.sharedContent);
     if (!title || title.length > 200 || !validateType(typeKey) || sharedContent.length > 200000) return badRequest(res, '资产名称、类型或共享模板无效');
+    const requestedUrl = body.url === undefined ? undefined : normalizeUrl(body.url);
+    if (requestedUrl === null) return badRequest(res, '网址无效');
+    const url = requestedUrl === undefined ? (existing.url || '') : requestedUrl;
+    if (typeKey === 'website' && !url) return badRequest(res, '网站收藏需要填写网址');
+    const folder = body.folder === undefined ? (existing.folder || '') : normalizeFolder(body.folder);
     const tags = body.tags === undefined ? existing.tags : (Array.isArray(body.tags) ? body.tags.filter((tag) => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean).slice(0, 30) : []);
     const parsedBindings = body.privateBindings === undefined ? undefined : parseBindings(body.privateBindings);
     if (parsedBindings === null) return badRequest(res, '私密配置格式无效或超过大小限制');
     const privateBindings = parsedBindings === undefined ? existing.private_bindings : encryptJson(parsedBindings);
-    const result = await pool.query('UPDATE assets SET title=$1,type_key=$2,description=$3,tags=$4::jsonb,shared_content=$5,private_bindings=$6,favorite=$7,updated_at=now() WHERE id=$8 AND user_id=$9 RETURNING *', [title, typeKey, body.description === undefined ? existing.description : String(body.description).slice(0, 1000), JSON.stringify(tags), sharedContent, privateBindings, body.favorite === undefined ? existing.favorite : Boolean(body.favorite), req.params.id, req.user.id]);
+    const result = await pool.query('UPDATE assets SET title=$1,type_key=$2,description=$3,tags=$4::jsonb,shared_content=$5,private_bindings=$6,favorite=$7,url=$8,folder=$9,updated_at=now() WHERE id=$10 AND user_id=$11 RETURNING *', [title, typeKey, body.description === undefined ? existing.description : String(body.description).slice(0, 1000), JSON.stringify(tags), sharedContent, privateBindings, body.favorite === undefined ? existing.favorite : Boolean(body.favorite), url, folder, req.params.id, req.user.id]);
     await recordAudit({ req, userId: req.user.id, action: 'asset.update', assetId: req.params.id, metadata: { typeKey } });
     res.json({ asset: assetResponse(result.rows[0]) });
   } catch (error) { next(error); }
 });
 
 app.post('/api/v1/assets/:id/use', authenticate, async (req, res, next) => {
-  try { const result = await pool.query('UPDATE assets SET used_at=now(), updated_at=now(), use_count=COALESCE(use_count,0)+1 WHERE id=$1 AND user_id=$2 RETURNING *', [req.params.id, req.user.id]); if (!result.rowCount) return res.status(404).json({ error: 'NOT_FOUND', message: '资产不存在' }); await recordAudit({ req, userId: req.user.id, action: 'asset.use', assetId: req.params.id }); res.json({ asset: assetResponse(result.rows[0]) }); }
+  try { const result = await pool.query('UPDATE assets SET used_at=now(), use_count=COALESCE(use_count,0)+1 WHERE id=$1 AND user_id=$2 RETURNING *', [req.params.id, req.user.id]); if (!result.rowCount) return res.status(404).json({ error: 'NOT_FOUND', message: '资产不存在' }); await recordAudit({ req, userId: req.user.id, action: 'asset.use', assetId: req.params.id }); res.json({ asset: assetResponse(result.rows[0]) }); }
   catch (error) { next(error); }
 });
 

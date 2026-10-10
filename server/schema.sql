@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS assets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  type_key TEXT NOT NULL CHECK (type_key IN ('credentials', 'infra', 'prompt', 'snippet', 'database', 'component')),
+  type_key TEXT NOT NULL CHECK (type_key IN ('credentials', 'infra', 'prompt', 'snippet', 'database', 'component', 'website')),
   description TEXT NOT NULL DEFAULT '',
   tags JSONB NOT NULL DEFAULT '[]',
   shared_content TEXT NOT NULL,
@@ -24,13 +24,25 @@ CREATE TABLE IF NOT EXISTS assets (
   private_bindings TEXT NOT NULL DEFAULT '',
   favorite BOOLEAN NOT NULL DEFAULT false,
   use_count INTEGER NOT NULL DEFAULT 0,
-  used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  used_at TIMESTAMPTZ, -- NULL until the asset is actually copied/used
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Existing deployments: add the copy counter column if it is missing.
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS use_count INTEGER NOT NULL DEFAULT 0;
+
+-- Bookmarked websites: they are ordinary assets that also carry a target url and a folder.
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS url TEXT NOT NULL DEFAULT '';
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS folder TEXT NOT NULL DEFAULT '';
+
+-- Existing databases keep the old type_key constraint, so swap it for one that allows websites.
+ALTER TABLE assets DROP CONSTRAINT IF EXISTS assets_type_key_check;
+ALTER TABLE assets ADD CONSTRAINT assets_type_key_check CHECK (type_key IN ('credentials', 'infra', 'prompt', 'snippet', 'database', 'component', 'website'));
+
+-- Assets should not look recently used merely because they were created.
+ALTER TABLE assets ALTER COLUMN used_at DROP NOT NULL;
+ALTER TABLE assets ALTER COLUMN used_at DROP DEFAULT;
 
 -- Security-relevant events. Metadata must never contain secret values.
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -49,6 +61,7 @@ CREATE INDEX IF NOT EXISTS assets_type_key_idx ON assets(type_key);
 CREATE INDEX IF NOT EXISTS assets_favorite_idx ON assets(favorite);
 CREATE INDEX IF NOT EXISTS assets_used_at_idx ON assets(used_at DESC);
 CREATE INDEX IF NOT EXISTS assets_user_updated_idx ON assets(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS assets_user_folder_idx ON assets(user_id, folder);
 CREATE INDEX IF NOT EXISTS audit_logs_actor_created_idx ON audit_logs(actor_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS audit_logs_asset_created_idx ON audit_logs(asset_id, created_at DESC);
 

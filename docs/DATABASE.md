@@ -27,7 +27,7 @@
 | `shared_content` | TEXT | 可分享模板，使用 `{{ENV_NAME}}` 占位符 |
 | `private_bindings` | TEXT | AES-256-GCM 密文，不是 JSONB |
 | `favorite` | BOOLEAN | 收藏状态 |
-| `used_at` | TIMESTAMPTZ | 最近使用时间 |
+| `used_at` | TIMESTAMPTZ，可空 | 最近一次实际复制/使用时间；未使用资产为 `NULL` |
 | `created_at` / `updated_at` | TIMESTAMPTZ | 创建和更新时间 |
 
 `private_bindings` 的密文格式为：
