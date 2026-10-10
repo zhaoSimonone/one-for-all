@@ -525,7 +525,10 @@ function App() {
         && (!query.trim() || haystack.includes(query.toLowerCase()))
     })
     const effectiveSort = view === 'recent' ? 'recent' : view === 'uploaded' ? 'created' : sortBy
-    if (effectiveSort === 'recent') return list.sort((a, b) => usedStamp(b) - usedStamp(a) || (b.useCount || 0) - (a.useCount || 0) || createdStamp(b) - createdStamp(a))
+    if (effectiveSort === 'recent') return list.sort((a, b) => {
+      const usedRank = (asset) => usedStamp(asset) > 0 || (asset.useCount || 0) > 0 || asset.used !== '尚未使用' ? 1 : 0
+      return usedRank(b) - usedRank(a) || usedStamp(b) - usedStamp(a) || (b.useCount || 0) - (a.useCount || 0) || createdStamp(b) - createdStamp(a)
+    })
     if (effectiveSort === 'used') return list.sort((a, b) => (b.useCount || 0) - (a.useCount || 0) || usedStamp(b) - usedStamp(a))
     if (effectiveSort === 'name') return list.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
     if (effectiveSort === 'created') return list.sort((a, b) => createdStamp(b) - createdStamp(a) || String(b.updated || '').localeCompare(String(a.updated || '')))
