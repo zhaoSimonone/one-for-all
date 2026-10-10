@@ -25,3 +25,13 @@ The default API base is `https://tools.chatcanvas.online/api/v1`.
 ```
 
 The server encrypts `privateBindings` with AES-256-GCM before writing PostgreSQL. Normal asset responses contain only private variable names and lengths; real values are owner-only. The uploader must never log the request body or API response containing private values.
+
+## Update asset
+
+`PUT /assets/:id` accepts the same fields as create. Omitted fields keep stored values. Omitting `privateBindings` keeps existing encrypted bindings.
+
+Website assets also accept `url` and `folder`.
+
+## Open in the web app
+
+Saved assets are reachable at `https://tools.chatcanvas.online/a/<asset-id>`. The publish script returns this as `openUrl`.

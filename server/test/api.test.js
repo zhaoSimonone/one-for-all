@@ -244,3 +244,37 @@ test('copy events track per-asset heat and monthly copies', async () => {
   const otherStats = await request('/api/v1/stats/copies', { cookie: other.cookie });
   assert.equal(otherStats.body.copies, 0);
 });
+
+test('website assets store url/folder and can be filtered', async () => {
+  const registered = await request('/api/v1/auth/register', {
+    method: 'POST', body: { email: 'sites@example.com', name: 'Sites', password: 'correct horse battery staple' },
+  });
+  const created = await request('/api/v1/assets', {
+    method: 'POST', cookie: registered.cookie,
+    body: { title: 'Console', typeKey: 'website', sharedContent: 'https://example.com/console', url: 'example.com/console', folder: '工具', tags: ['ops'] },
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.asset.typeKey, 'website');
+  assert.equal(created.body.asset.url, 'https://example.com/console');
+  assert.equal(created.body.asset.folder, '工具');
+
+  const missingUrl = await request('/api/v1/assets', {
+    method: 'POST', cookie: registered.cookie,
+    body: { title: 'No URL', typeKey: 'website', sharedContent: 'bookmark' },
+  });
+  assert.equal(missingUrl.response.status, 400);
+
+  const listed = await request('/api/v1/assets?folder=' + encodeURIComponent('工具'), { cookie: registered.cookie });
+  assert.equal(listed.response.status, 200);
+  assert.equal(listed.body.assets.length, 1);
+  assert.equal(listed.body.assets[0].id, created.body.asset.id);
+
+  const updated = await request(`/api/v1/assets/${created.body.asset.id}`, {
+    method: 'PUT', cookie: registered.cookie,
+    body: { title: 'Ops Console', description: '生产控制台', tags: ['ops', 'console'], folder: '生产' },
+  });
+  assert.equal(updated.response.status, 200);
+  assert.equal(updated.body.asset.title, 'Ops Console');
+  assert.equal(updated.body.asset.folder, '生产');
+  assert.equal(updated.body.asset.url, 'https://example.com/console');
+});

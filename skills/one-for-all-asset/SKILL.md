@@ -23,7 +23,7 @@ Use this skill when the user asks to save, catalog, or upload reusable developme
    - Preserve existing `${NAME}` and `{{NAME}}` placeholders and never classify examples such as `sk-…`, `your-key`, or `placeholder` as real secrets.
 4. Choose a descriptive environment variable. Prefer an existing key name; for GPT Image input use `GPT_IMAGE_API_KEY`, otherwise use a specific uppercase name such as `OPENROUTER_API_KEY` or `API_BEARER_TOKEN`.
 5. Upload the result with the bundled script. The script repeats sensitive-value detection as a final guard and sends `sharedContent` plus `privateBindings` to the owner-scoped One for All API.
-6. After success, report only the title, type, tags, asset ID, the number of private bindings, and whether the run created a new asset or updated an existing one. Never print private values, the full request body, cookies, passwords, or bearer tokens.
+6. After success, report only the title, type, tags, asset ID, `openUrl`, the number of private bindings, and whether the run created a new asset or updated an existing one. Give the user the `openUrl` so they can open the asset in One for All. Never print private values, the full request body, cookies, passwords, or bearer tokens.
 
 ## Upload procedure
 
@@ -43,11 +43,22 @@ For a non-mutating check, add `--dry-run`; it prints inferred metadata and priva
 
 ## Create vs. update
 
-The bundled script creates a new asset by default (`POST /assets`). When the user clearly identifies an existing asset to revise, pass `--asset-id <UUID>` so the script updates that asset with `PUT /assets/:id`. If no new private values are detected during an update, the script omits `privateBindings` and preserves the existing private bindings. Pass `--clear-private` only when the user explicitly asks to remove them. Before uploading, decide whether the material instead supersedes an asset the user already stored:
+The script talks to the owner-scoped API and returns a structured JSON result: `id`, `title`, `typeKey`, `tags`, `privateBindingCount`, `action` (`created` or `updated`), and `openUrl` (`https://tools.chatcanvas.online/a/<id>`). Use the same protocol for `website`, `prompt`, `snippet`, `credentials`, `infra`, `database`, and `component`.
 
-- **Update in place** when the pasted material is a revision of an existing asset: same task and subject, and the new body is a superset or correction of the old one — for example a completed version of a previously truncated text, added constraints, or added deliverables. Update via `PUT /assets/:id` with the same authentication as the script (omitted fields keep their stored values; omitting `privateBindings` keeps existing bindings, so an update never needs the secret values again). Prefer updating when the stored version is strictly incomplete, for instance auto-completed by the assistant from a truncated paste.
-- **Create new** when the task or subject differs from every stored asset, or when the user explicitly wants several variants of the same prompt kept side by side (e.g. a simple daily version and a strict delivery version).
-- If the match is uncertain, create a new asset and say so in the report; never overwrite an asset the user did not clearly re-supply in the current session.
+Default behavior:
+
+1. If the user or this session already has an asset ID, pass `--asset-id <UUID>` so the script updates that asset (`PUT /assets/:id`).
+2. Otherwise the script lists existing assets and **reuses an ID** when it finds an exact match:
+   - `website`: same normalized URL
+   - other types: same `typeKey` + same title (case-insensitive)
+3. Pass `--force-create` only when the user explicitly wants a new variant kept side by side.
+4. If no new private values are detected during an update, the script omits `privateBindings` and preserves existing bindings. Pass `--clear-private` only when the user explicitly asks to remove them.
+
+Policy:
+
+- **Update in place** when the pasted material is a revision of the same task/subject, including a completed version of a truncated paste.
+- **Create new** when the task differs, or when the user wants multiple variants.
+- If the match is uncertain, pass `--force-create` rather than guessing an ID. Never overwrite an asset the user did not clearly re-supply.
 
 ## Authentication
 

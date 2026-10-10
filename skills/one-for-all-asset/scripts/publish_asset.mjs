@@ -21,6 +21,7 @@ function parseArgs(argv) {
     if (!item.startsWith('--')) continue
     const key = item.slice(2)
     if (key === 'dry-run') args.dryRun = true
+    else if (key === 'force-create') args.forceCreate = true
     else args[key] = argv[index + 1] && !argv[index + 1].startsWith('--') ? argv[++index] : ''
   }
   return args
@@ -185,7 +186,36 @@ async function authenticate() {
   return { Cookie: cookie }
 }
 
-function safeSummary(asset, bindings, action) {
+function appOrigin() {
+  const api = (process.env.OFA_APP_URL || process.env.OFA_API_URL || 'https://tools.chatcanvas.online').replace(/\/api\/v1\/?$/, '').replace(/\/$/, '')
+  return api.endsWith('/api/v1') ? 'https://tools.chatcanvas.online' : api
+}
+
+function normalizeMatchUrl(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+    url.hash = ''
+    let href = url.toString()
+    if (href.endsWith('/')) href = href.slice(0, -1)
+    return href.toLowerCase()
+  } catch {
+    return raw.toLowerCase()
+  }
+}
+
+function findExisting(assets, { title, typeKey, url }) {
+  if (typeKey === 'website' && url) {
+    const target = normalizeMatchUrl(url)
+    const hit = assets.find((asset) => asset.typeKey === 'website' && normalizeMatchUrl(asset.url) === target)
+    if (hit) return hit
+  }
+  const expected = String(title || '').trim().toLowerCase()
+  return assets.find((asset) => asset.typeKey === typeKey && String(asset.title || '').trim().toLowerCase() === expected) || null
+}
+
+function safeSummary(asset, bindings, action, matchedBy = '') {
   const privateBindingNames = Object.keys(bindings).length ? Object.keys(bindings) : Object.keys(asset.privateBindingMeta || {})
   return JSON.stringify({
     saved: true,
@@ -194,8 +224,12 @@ function safeSummary(asset, bindings, action) {
     title: asset.title,
     typeKey: asset.typeKey,
     tags: asset.tags,
+    url: asset.url || '',
+    folder: asset.folder || '',
     privateBindingCount: privateBindingNames.length,
     privateBindingNames,
+    openUrl: `${appOrigin()}/a/${asset.id}`,
+    matchedBy: matchedBy || undefined,
   }, null, 2)
 }
 
@@ -218,10 +252,20 @@ async function main() {
     return
   }
   const headers = await authenticate()
-  const assetId = args['asset-id']?.trim()
+  let assetId = args['asset-id']?.trim() || ''
+  let matchedBy = assetId ? 'asset-id' : ''
+  if (!assetId && !args.forceCreate) {
+    const query = encodeURIComponent((typeKey === 'website' ? (url || title) : title).slice(0, 200))
+    const { body: listed } = await request(`/assets?q=${query}&limit=100`, { headers })
+    const existing = findExisting(listed?.assets || [], { title, typeKey, url })
+    if (existing) {
+      assetId = existing.id
+      matchedBy = typeKey === 'website' && url ? 'url' : 'title+type'
+    }
+  }
   const clearPrivate = Boolean(args['clear-private'])
-  const payload = { title, typeKey, description, tags, sharedContent: typeKey === 'website' ? (split.sharedContent.trim() || url) : split.sharedContent }
-  if (typeKey === 'website') { payload.url = url; payload.folder = folder }
+  const payload = { title, typeKey, description, tags, sharedContent: typeKey === 'website' ? (split.sharedContent.trim() || url) : split.sharedContent, folder }
+  if (typeKey === 'website' || url) payload.url = url
   if (!assetId || Object.keys(split.privateBindings).length || clearPrivate) payload.privateBindings = clearPrivate ? {} : split.privateBindings
   if (!assetId) payload.favorite = false
   const { body } = await request(assetId ? `/assets/${assetId}` : '/assets', {
@@ -230,7 +274,7 @@ async function main() {
     body: JSON.stringify(payload),
   })
   if (!body?.asset) throw new Error('One for All 未返回已保存资产')
-  process.stdout.write(safeSummary(body.asset, split.privateBindings, assetId ? 'updated' : 'created') + '\n')
+  process.stdout.write(safeSummary(body.asset, split.privateBindings, assetId ? 'updated' : 'created', matchedBy) + '\n')
 }
 
 main().catch((error) => {
