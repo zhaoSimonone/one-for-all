@@ -1,0 +1,9 @@
+{
+  "SKILL.md": "0bb05100577c9d49fa02192047fb586e091ef197ff4f0a0633b2b720b8ee623f",
+  "requirements.txt": "fdde51696d8ef04cd42aa6a7f0dfbc63418e092c365254e86e982014298e9ee3",
+  "agents/openai.yaml": "4f381cd7d1d47d70a017ea511ea30f8ce0bbbc89126bce0250dad1d72dd92ca1",
+  "references/region-detection.md": "7245193e0563b05f5538b5ce28f6d49115e7a2c76a680ca610471465d79b0fac",
+  "references/tuning.md": "d08ab77ca6da727651205c1c405286470ccf23a47c8c751ad3e4bd9e1ce2e24f",
+  "scripts/blur_censor.py": "b1e5c088b678a0cb22626c8930456052b27ee21d43d08a6f2d786b884028cfc3",
+  "tests/test_blur_censor.py": "15f2b6716a7a1c94804d55dd147cba3a0a5992b7718acd0c50856425b5487611"
+}
