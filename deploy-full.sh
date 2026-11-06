@@ -4,10 +4,152 @@
 
 set -euo pipefail
 
-SERVER_HOST="124.223.212.122"
-SERVER_USER="ubuntu"
-SSH_KEY="/Users/simon/Desktop/dev/cloud/tencent/lhkp-pdok1duo.pem"
 PROJECT_DIR="/Users/simon/Desktop/dev/code/one-for-all"
+ENV_FILE="$PROJECT_DIR/.env.local"
+
+# 从 .env.local 读取私密绑定（该文件已被 .gitignore 忽略，不会提交）。
+# 只解析需要的键，不 source 整个文件，避免误执行其中内容。
+read_env_value() {
+  local key="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  sed -n "s/^${key}=\(.*\)\$/\1/p" "$ENV_FILE" | head -n 1 | sed 's/^"\(.*\)"$/\1/'
+}
+
+# 读取多行值（dotenv 双引号包裹的 PEM 私钥）。
+read_env_multiline() {
+  local key="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  awk -v k="$key" '
+    index($0, k "=") == 1 {
+      line = substr($0, index($0, "=") + 1)
+      if (line ~ /^"/) {
+        sub(/^"/, "", line)
+        print line
+        while ((getline l) > 0) {
+          if (l ~ /"$/) { sub(/"$/, "", l); print l; exit }
+          print l
+        }
+      } else {
+        print line
+      }
+      exit
+    }
+  ' "$ENV_FILE"
+}
+
+# 非机密默认值写在这里（可提交 Git），机密值从 .env.local 覆盖。
+SERVER_HOST="$(read_env_value SSH_HOST)"
+[ -n "$SERVER_HOST" ] || SERVER_HOST="124.223.212.122"
+
+SERVER_USER="$(read_env_value SSH_USER)"
+[ -n "$SERVER_USER" ] || SERVER_USER="ubuntu"
+
+# 私钥来源优先级：.env.local 内嵌私钥 > .env.local 私钥副本路径 > 内置默认路径
+TMP_KEY_FILE=""
+cleanup() {
+  [ -n "$TMP_KEY_FILE" ] && [ -f "$TMP_KEY_FILE" ] && rm -f "$TMP_KEY_FILE"
+  return 0
+}
+trap cleanup EXIT
+
+SSH_KEY_INLINE="$(read_env_multiline SSH_PRIVATE_KEY)"
+SSH_KEY_PATH="$(read_env_value SSH_PRIVATE_KEY_PATH)"
+
+SSH_KEY=""
+SSH_KEY_SOURCE=""
+if [ -n "$SSH_KEY_INLINE" ]; then
+  TMP_KEY_FILE="$(mktemp -t ofa_ssh_key.XXXXXX)"
+  chmod 600 "$TMP_KEY_FILE"
+  printf '%s\n' "$SSH_KEY_INLINE" > "$TMP_KEY_FILE"
+  SSH_KEY="$TMP_KEY_FILE"
+  SSH_KEY_SOURCE="内嵌私钥（.env.local SSH_PRIVATE_KEY，临时文件权限 600）"
+elif [ -n "$SSH_KEY_PATH" ]; then
+  SSH_KEY="$SSH_KEY_PATH"
+  SSH_KEY_SOURCE="私钥副本（.env.local SSH_PRIVATE_KEY_PATH）"
+else
+  SSH_KEY="/Users/simon/Desktop/dev/cloud/tencent/lhkp-pdok1duo.pem"
+  SSH_KEY_SOURCE="私钥副本（内置默认路径）"
+fi
+
+# 供脚本尾部提示使用：内嵌私钥是临时文件，退出即删，提示里改为说明来源。
+SSH_KEY_DISPLAY="$SSH_KEY"
+if [ -n "$TMP_KEY_FILE" ]; then
+  SSH_KEY_DISPLAY="<.env.local 内嵌私钥>"
+fi
+
+# 预检：只做检查，不构建、不上传、不改动线上。
+run_preflight() {
+  echo "=========================================="
+  echo "部署预检（只读，不改动线上）"
+  echo "=========================================="
+  echo "目标: $SERVER_USER@$SERVER_HOST"
+  echo ""
+
+  echo "[1/4] 私钥来源: $SSH_KEY_SOURCE"
+  if [ ! -f "$SSH_KEY" ]; then
+    echo "  ✗ 不存在: $SSH_KEY"
+    echo "    可在 .env.local 设置 SSH_PRIVATE_KEY / SSH_PRIVATE_KEY_PATH，或使用 SSH_PASSWORD + sshpass/expect"
+    return 1
+  fi
+  local perm
+  if stat -c '%a' "$SSH_KEY" >/dev/null 2>&1; then
+    perm="$(stat -c '%a' "$SSH_KEY")"
+  else
+    perm="$(stat -f '%Lp' "$SSH_KEY")"
+  fi
+  if [ "$perm" != "600" ]; then
+    echo "权限 $perm 过宽，正在修正为 600"
+    chmod 600 "$SSH_KEY"
+  else
+    echo "✓ 存在且权限 600"
+  fi
+
+  echo -n "[2/4] 本地工具链 "
+  local missing=0
+  for cmd in node npm ssh scp tar; do
+    command -v "$cmd" >/dev/null 2>&1 || { echo "✗ 缺少 $cmd"; missing=1; }
+  done
+  [ "$missing" -eq 0 ] || return 1
+  echo "✓ node $(node -v) / npm $(npm -v) / ssh $(ssh -V 2>&1 | awk '{print $2}')"
+
+  echo -n "[3/4] 本地依赖 "
+  if [ -d "$PROJECT_DIR/node_modules" ]; then
+    echo "✓ node_modules 已就绪"
+  else
+    echo "! node_modules 缺失，请先执行: cd $PROJECT_DIR && npm install"
+  fi
+
+  echo -n "[4/4] SSH 连通性 "
+  if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes \
+      "$SERVER_USER@$SERVER_HOST" 'echo OK' >/dev/null 2>&1; then
+    echo "✓ 密钥登录正常"
+  else
+    echo "✗ 密钥登录失败"
+    return 1
+  fi
+
+  if [ -d "$PROJECT_DIR/.git" ]; then
+    local changed
+    changed="$(cd "$PROJECT_DIR" && git status --porcelain)"
+    if [ -n "$changed" ]; then
+      echo ""
+      echo "! 工作区存在未提交改动，deploy-full.sh 会直接从工作区构建："
+      echo "$changed" | head -20
+    else
+      echo ""
+      echo "✓ 工作区干净"
+    fi
+  fi
+
+  echo ""
+  echo "预检通过，可以执行: ./deploy-full.sh"
+}
+
+if [ "${1:-}" = "preflight" ]; then
+  cd "$PROJECT_DIR"
+  run_preflight
+  exit $?
+fi
 
 echo "=========================================="
 echo "One for All 后端部署"
@@ -182,6 +324,6 @@ echo "  - API 健康检查: https://tools.chatcanvas.online/api/health"
 echo "  - 前端页面: https://tools.chatcanvas.online/"
 echo ""
 echo "管理命令："
-echo "  查看日志: ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'cd /var/www/one-for-all-backend && sudo docker-compose logs -f api'"
-echo "  重启服务: ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'cd /var/www/one-for-all-backend && sudo docker-compose restart api'"
+echo "  查看日志: ssh -i $SSH_KEY_DISPLAY $SERVER_USER@$SERVER_HOST 'cd /var/www/one-for-all-backend && sudo docker-compose logs -f api'"
+echo "  重启服务: ssh -i $SSH_KEY_DISPLAY $SERVER_USER@$SERVER_HOST 'cd /var/www/one-for-all-backend && sudo docker-compose restart api'"
 echo ""

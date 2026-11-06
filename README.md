@@ -43,3 +43,9 @@ npm run build
 当前版本已发布到 [tools.chatcanvas.online](https://tools.chatcanvas.online)。服务器静态目录为 `/var/www/one-for-all`，Nginx 配置模板位于 `deploy/nginx-tools.conf`，HTTPS 由 Certbot 自动续期。
 
 更新部署时重新构建 `dist`，同步到该目录并 reload Nginx 即可。仓库不应提交真实密钥；示例资产里的值均为占位符。
+
+服务器清单、SSH 私密绑定与验证方式见 [docs/REMOTE_SERVERS.md](docs/REMOTE_SERVERS.md)。部署前可先执行只读预检：
+
+```bash
+./deploy-full.sh preflight
+```
